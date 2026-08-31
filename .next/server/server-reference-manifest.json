@@ -1,0 +1,71 @@
+{
+  "node": {
+    "00cfb1c91804c515b9243a32d4e8d75e8b87531923": {
+      "workers": {
+        "app/products/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%2C%5B%7B%22id%22%3A%2200cfb1c91804c515b9243a32d4e8d75e8b87531923%22%2C%22exportedName%22%3A%22refreshLivePricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22402285e5837c6d61cf412d09a5311fab96ae0b6fef%22%2C%22exportedName%22%3A%22fetchProductHistory%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%224046d05924123ba2aac1ab200aae3ffd484e3dbc4b%22%2C%22exportedName%22%3A%22fetchSecurityTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22407f6c90c1dea889d86a42004d724fe88bc3a09aec%22%2C%22exportedName%22%3A%22fetchProductTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%226048566f64b4963f339801c6b063df7318281d43ff%22%2C%22exportedName%22%3A%22applyPricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/products/page": "action-browser"
+      },
+      "filename": "../C:\\Users\\nwaug\\Desktop\\fundmanager-v01\\app\\actions.ts",
+      "exportedName": "refreshLivePricesAction"
+    },
+    "402285e5837c6d61cf412d09a5311fab96ae0b6fef": {
+      "workers": {
+        "app/products/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%2C%5B%7B%22id%22%3A%2200cfb1c91804c515b9243a32d4e8d75e8b87531923%22%2C%22exportedName%22%3A%22refreshLivePricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22402285e5837c6d61cf412d09a5311fab96ae0b6fef%22%2C%22exportedName%22%3A%22fetchProductHistory%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%224046d05924123ba2aac1ab200aae3ffd484e3dbc4b%22%2C%22exportedName%22%3A%22fetchSecurityTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22407f6c90c1dea889d86a42004d724fe88bc3a09aec%22%2C%22exportedName%22%3A%22fetchProductTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%226048566f64b4963f339801c6b063df7318281d43ff%22%2C%22exportedName%22%3A%22applyPricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/products/page": "action-browser"
+      },
+      "filename": "../C:\\Users\\nwaug\\Desktop\\fundmanager-v01\\app\\actions.ts",
+      "exportedName": "fetchProductHistory"
+    },
+    "4046d05924123ba2aac1ab200aae3ffd484e3dbc4b": {
+      "workers": {
+        "app/products/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%2C%5B%7B%22id%22%3A%2200cfb1c91804c515b9243a32d4e8d75e8b87531923%22%2C%22exportedName%22%3A%22refreshLivePricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22402285e5837c6d61cf412d09a5311fab96ae0b6fef%22%2C%22exportedName%22%3A%22fetchProductHistory%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%224046d05924123ba2aac1ab200aae3ffd484e3dbc4b%22%2C%22exportedName%22%3A%22fetchSecurityTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22407f6c90c1dea889d86a42004d724fe88bc3a09aec%22%2C%22exportedName%22%3A%22fetchProductTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%226048566f64b4963f339801c6b063df7318281d43ff%22%2C%22exportedName%22%3A%22applyPricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/products/page": "action-browser"
+      },
+      "filename": "../C:\\Users\\nwaug\\Desktop\\fundmanager-v01\\app\\actions.ts",
+      "exportedName": "fetchSecurityTransactions"
+    },
+    "407f6c90c1dea889d86a42004d724fe88bc3a09aec": {
+      "workers": {
+        "app/products/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%2C%5B%7B%22id%22%3A%2200cfb1c91804c515b9243a32d4e8d75e8b87531923%22%2C%22exportedName%22%3A%22refreshLivePricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22402285e5837c6d61cf412d09a5311fab96ae0b6fef%22%2C%22exportedName%22%3A%22fetchProductHistory%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%224046d05924123ba2aac1ab200aae3ffd484e3dbc4b%22%2C%22exportedName%22%3A%22fetchSecurityTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22407f6c90c1dea889d86a42004d724fe88bc3a09aec%22%2C%22exportedName%22%3A%22fetchProductTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%226048566f64b4963f339801c6b063df7318281d43ff%22%2C%22exportedName%22%3A%22applyPricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/products/page": "action-browser"
+      },
+      "filename": "../C:\\Users\\nwaug\\Desktop\\fundmanager-v01\\app\\actions.ts",
+      "exportedName": "fetchProductTransactions"
+    },
+    "6048566f64b4963f339801c6b063df7318281d43ff": {
+      "workers": {
+        "app/products/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%2C%5B%7B%22id%22%3A%2200cfb1c91804c515b9243a32d4e8d75e8b87531923%22%2C%22exportedName%22%3A%22refreshLivePricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22402285e5837c6d61cf412d09a5311fab96ae0b6fef%22%2C%22exportedName%22%3A%22fetchProductHistory%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%224046d05924123ba2aac1ab200aae3ffd484e3dbc4b%22%2C%22exportedName%22%3A%22fetchSecurityTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%22407f6c90c1dea889d86a42004d724fe88bc3a09aec%22%2C%22exportedName%22%3A%22fetchProductTransactions%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%2C%7B%22id%22%3A%226048566f64b4963f339801c6b063df7318281d43ff%22%2C%22exportedName%22%3A%22applyPricesAction%22%2C%22filename%22%3A%22..%2FC%3A%5C%5CUsers%5C%5Cnwaug%5C%5CDesktop%5C%5Cfundmanager-v01%5C%5Capp%5C%5Cactions.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/products/page": "action-browser"
+      },
+      "filename": "../C:\\Users\\nwaug\\Desktop\\fundmanager-v01\\app\\actions.ts",
+      "exportedName": "applyPricesAction"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "4zHFTjqhyXlR1Ivem21tQEsK+PNyZG/SRMHtoVM4biA="
+}

@@ -1,0 +1,212 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("user") // admin, approver, reviewer, user
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Business Models
+
+model Client {
+  id           String   @id @default(cuid())
+  name         String
+  client_type  String   @default("individual") // individual, corporate
+  identifier   String   @unique
+  email        String?
+  phone        String?
+  country      String?
+  currency     String   @default("USD")
+  status       String   @default("active")
+  cash_balance Float    @default(0)
+  created_by   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  holdings          ClientHolding[]
+  cash_transactions CashTransaction[]
+}
+
+model Product {
+  id               String   @id @default(cuid())
+  name             String
+  ticker           String   @unique
+  asset_class      String
+  currency         String   @default("USD")
+  price            Float    @default(0)
+  previous_price   Float?
+  price_mode       String   @default("manual") // manual, automated
+  price_source     String?
+  price_updated_at DateTime @default(now())
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  price_history PriceHistory[]
+  holdings      ClientHolding[]
+  cash_transactions CashTransaction[]
+  security_transactions SecurityTransaction[]
+}
+
+model PriceHistory {
+  id          Int      @id @default(autoincrement())
+  product_id  String
+  old_price   Float?
+  new_price   Float
+  mode        String   @default("manual")
+  source      String?
+  changed_by  String?
+  occurred_at DateTime @default(now())
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+}
+
+model ClientHolding {
+  id         String   @id @default(cuid())
+  client_id  String
+  product_id String
+  units      Float    @default(0)
+  avg_cost   Float    @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  client  Client  @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([client_id, product_id])
+}
+
+model ImportBatch {
+  id              String   @id @default(cuid())
+  kind            String   @default("cash")
+  file_name       String
+  row_count       Int      @default(0)
+  matched_count   Int      @default(0)
+  unmatched_count Int      @default(0)
+  status          String   @default("submitted")
+  created_by      String?
+  created_at      DateTime @default(now())
+
+  cash_transactions CashTransaction[]
+}
+
+model CashTransaction {
+  id            String   @id @default(cuid())
+  client_id     String?
+  source_name   String?
+  direction     String   @default("inflow") // inflow, outflow
+  amount        Float
+  currency      String   @default("USD")
+  value_date    DateTime @default(now())
+  reference     String
+  narration     String?
+  evidence_ref  String?
+  evidence_note String?
+  entry_source  String   @default("single")
+  batch_id      String?
+  product_id    String?  // Optional relation to mark transactions belonging to a specific product (like Gold Fund)
+  status        String   @default("pending_review") // pending_review, pending_approval, approved, rejected
+  submitted_by  String?
+  submitted_at  DateTime @default(now())
+  reviewed_by   String?
+  reviewed_at   DateTime?
+  approved_by   String?
+  approved_at   DateTime?
+  decision_note String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  client  Client?      @relation(fields: [client_id], references: [id], onDelete: SetNull)
+  batch   ImportBatch? @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  product Product?     @relation(fields: [product_id], references: [id], onDelete: SetNull)
+}
+
+model SecurityTransaction {
+  id            String   @id @default(cuid())
+  product_id    String
+  direction     String   @default("BUY") // BUY, SELL
+  symbol        String?
+  units         Float
+  price         Float
+  currency      String   @default("USD")
+  value_date    DateTime @default(now())
+  status        String   @default("completed")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  user_id    String?
+  kind       String    @default("approval_request")
+  title      String
+  body       String?
+  entity     String?
+  entity_id  String?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  is_secret   Boolean  @default(false)
+  updated_at  DateTime @updatedAt
+  updated_by  String?
+}

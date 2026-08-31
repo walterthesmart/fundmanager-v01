@@ -1,0 +1,55 @@
+SYMB,ED,TRAN,ANUM,BNUM,CNUM,MEMO,CURRENCY
+Gold Fund Cash,20250327,TXIN,1,150000,0,Belinda Disu - Subscription,USD
+Gold Fund Cash,20250404,TXIN,1,25000,0,Yewande Zaccheaus - Subscription,USD
+Gold Fund Cash,20250408,TXIN,1,24982.59,0,Geraldine Lazarre - Subscription,USD
+Gold Fund Cash,20250425,TXIN,1,4900,0,Tania Teller - Subscription,USD
+Gold Fund Cash,20250507,TXIN,1,25000,0,Onyekachi Mbaike - Subscription,USD
+Gold Fund Cash,20250508,TXIN,1,7960,0,Moyo Makanjuola - Subscription,USD
+Gold Fund Cash,20250604,TXIN,1,9200,0,Leona Asika - Subscription,USD
+Gold Fund Cash,20250604,TXIN,1,5000,0,Bolaji Olajide - Subscription,USD
+Gold Fund Cash,20250613,TXIN,1,5000,0,Yewande Zaccheaus - Subscription,USD
+Gold Fund Cash,20250624,TXIN,1,10000,0,Leona Adesanya and Asa Asika - Subscription,USD
+Gold Fund Cash,20250625,TXIN,1,7500,0,Seike and Ted - Subscription,USD
+Gold Fund Cash,20250805,TXIN,1,20000,0,Ayomide Dokunmu - Subscription,USD
+Gold Fund Cash,20250813,TXIN,1,6000,0,Salewa Osakwe - Subscription,USD
+Gold Fund Cash,20250821,TXIN,1,10000,0,Bimbo Oguntunde - Subscription,USD
+Gold Fund Cash,20250825,TXIN,1,10000,0,Ogbonna Anosikeh - Subscription,USD
+Gold Fund Cash,20250826,TXIN,1,10000,0,Ogbonna Anosikeh - Subscription,USD
+Gold Fund Cash,20250829,TXIN,1,10000,0,Ogbonna Anosikeh - Subscription,USD
+Gold Fund Cash,20251021,TXIN,1,48207.76,0,Belinda Disu - Subscription,USD
+Gold Fund Cash,20251027,TXIN,1,20056.47,0,Ayomide Dokunmu - Subscription,USD
+Gold Fund Cash,20251112,TXIN,1,14980,0,Leona Adesanya and Asa Asika - Subscription,USD
+Gold Fund Cash,20251113,TXIN,1,5110.96,0,Christopher Ibru - Subscription,USD
+Gold Fund Cash,20251204,TXIN,1,9404.16,0,Leona Asika - Subscription,USD
+Gold Fund Cash,20251208,TXIN,1,10000,0,Bolaji Olajide - Subscription,USD
+Gold Fund Cash,20251208,TXIN,1,9683,0,Moyo Makanjuola - Subscription,USD
+Gold Fund Cash,20251222,TXIN,1,33000,0,Zeebo Capitaux Limited - Subscription,USD
+Gold Fund Cash,20260116,TXIN,1,8570,0,Yewande Zaccheaus - Subscription,USD
+Gold Fund Cash,20260128,TXIN,1,33175,0,Yewande Zaccheaus - Subscription,USD
+Gold Fund Cash,20260130,TXIN,1,14980,0,Tolulope Susanna Amsata-Awani - Subscription,USD
+Gold Fund Cash,20260204,TXIN,1,7376.06,0,Leona Adesanya and Asa Asika - Subscription,USD
+Gold Fund Cash,20260204,TXIN,1,1717.59,0,Leona Adesanya and Asa Asika - Subscription,USD
+Gold Fund Cash,20260204,TXOUT,1,92175.41,0,Belinda Disu - Redemption,USD
+Gold Fund Cash,20260420,TXOUT,1,3835.98,0,Bimbo Oguntunde - Redemption,USD
+Gold Fund Cash,20260601,TXOUT,1,5445.84,0,Christopher Ibru - Redemption,USD
+Gold Fund Cash,20260610,TXOUT,1,16081.27,0,Bolaji Olajide - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,42925.72,0,Ayomide Dokunmu - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,156835.13,0,Belinda Disu - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,8617.83,0,Bimbo Oguntunde - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,31294.42,0,Geraldine Lazarre - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,33574.07,0,Leona Adesanya and Asa Asika - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,19735.3,0,Leona Asika - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,18492.54,0,Moyo Makanjuola - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,35087.38,0,Ogbonna Anosikeh - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,28652.53,0,Onyekachi Mbaike - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,7089.52,0,Salewa Osakwe - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,8883.31,0,Seike and Ted - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,5750.85,0,Tania Teller - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,11220.32,0,Tolulope Susanna Amsata-Awani - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,70469.89,0,Yewande Zaccheaus - Redemption,USD
+Gold Fund Cash,20260611,TXOUT,1,30628.61,0,Zeebo Capitaux Limited - Redemption,USD
+Gold Fund Cash,20260611,TXIN,1,626795.92,0,Transfer of Gold Fund Client Liability,USD
+Gold Fund Cash,20260611,TXOUT,1,16739.81,0,Reclassification of Management Fee on Gold Fund closed to StoneX,USD
+Gold Fund Cash,20260611,TXIN,1,3534.94,0,Recognition of unpaid Partner's commission on Gold Fund,USD
+Gold Fund Cash,20260731,TXOUT,1,3534.94,0,Derecognition of partner's commission paid,USD
+Gold Fund Cash,20260731,TXOUT,1,564872.89,0,Derecognition of 15 clients liabilities paid out or transferred to GIF,USD
