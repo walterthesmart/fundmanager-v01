@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, useEffect } from "react";
 import {
   Download,
   FileSpreadsheet,
@@ -57,6 +57,10 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
   const [selectedChartProduct, setSelectedChartProduct] = useState<any | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  useEffect(() => {
+    setProducts(initialProducts);
+  }, [initialProducts]);
 
   const handleRefresh = () => {
     router.refresh();
@@ -207,6 +211,11 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
 
         {ASSET_CLASSES.map((ac) => {
           const list = products.filter((p) => p.asset_class === ac.value);
+          list.sort((a, b) => {
+            if (a.ticker.includes("GIF")) return -1;
+            if (b.ticker.includes("GIF")) return 1;
+            return a.name.localeCompare(b.name);
+          });
           return (
             <TabsContent key={ac.value} value={ac.value}>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -231,9 +240,13 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium flex items-center gap-2">
                             {product.name}
-                            {product.ticker === "SGF-IAU" && (
-                              <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-destructive text-destructive-foreground">
-                                Closed
+                            {product.ticker.includes("GIF") ? (
+                              <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-emerald-600 text-white ml-1">
+                                LIVE
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-slate-200 text-slate-600 ml-1">
+                                Coming Soon
                               </span>
                             )}
                           </p>
@@ -254,7 +267,11 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
                       </div>
 
                       <p className="text-numeric mt-3 text-xl font-semibold">
-                        {formatMoney(product.aum, product.currency)}
+                        {new Intl.NumberFormat("en-US", {
+                           style: "currency",
+                           currency: product.currency || "USD",
+                           minimumFractionDigits: 2
+                        }).format(product.aum)}
                       </p>
                       <p
                         className={`text-xs ${change >= 0 ? "text-mint-foreground" : "text-destructive"}`}
@@ -306,6 +323,7 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
         productId={selectedChartProduct?.id} 
         productName={selectedChartProduct?.name}
         productCurrency={selectedChartProduct?.currency}
+        productCashBalance={Number(selectedChartProduct?.cash_balance || 0)}
         isOpen={Boolean(selectedChartProduct)}
         onClose={() => setSelectedChartProduct(null)}
         onRefresh={handleRefresh}

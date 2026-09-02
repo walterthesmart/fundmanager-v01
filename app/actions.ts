@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import yahooFinance from 'yahoo-finance2'
 
 export async function applyPricesAction(
-  updates: { id: string; price: number; mode: "manual" | "automated"; source: string | null }[],
+  updates: { id: string; price: number; mode: "manual" | "automated"; source: string | null; cash_balance?: number }[],
   userId?: string
 ) {
   for (const update of updates) {
@@ -20,6 +20,7 @@ export async function applyPricesAction(
         price_mode: update.mode,
         price_source: update.mode === "automated" ? update.source : null,
         price_updated_at: new Date(),
+        ...(update.cash_balance !== undefined ? { cash_balance: update.cash_balance } : {})
       }
     });
 

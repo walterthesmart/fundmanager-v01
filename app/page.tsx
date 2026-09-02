@@ -12,7 +12,7 @@ import {
 import { getServerSession } from "next-auth/next";
 
 import { DashboardShell } from "@/components/dashboard-shell";
-import { authOptions } from "./api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ASSET_CLASSES, valueHoldings } from "@/lib/wealth-data";
 import { CURRENCY_RATES } from "@/lib/display-currency";

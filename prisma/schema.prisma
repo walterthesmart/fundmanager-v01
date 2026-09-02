@@ -86,6 +86,7 @@ model Product {
   ticker           String   @unique
   asset_class      String
   currency         String   @default("USD")
+  cash_balance     Float    @default(0)
   price            Float    @default(0)
   previous_price   Float?
   price_mode       String   @default("manual") // manual, automated

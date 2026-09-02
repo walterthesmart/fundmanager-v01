@@ -11,17 +11,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { calculateAccruedInterest, calculateYTM, calculateDirtyPriceFromYTM, calculateCleanPrice, calculateTotalConsideration, getNextCouponDate, getPreviousCouponDate, calculateCouponsReceived, isZeroCoupon, calculateTBillPrice, calculateTBillYield, calculateTBillConsideration } from "../lib/bond-math";
+import { generateHistoricalAUM } from "../lib/historical-chart";
 
 interface ProductChartModalProps {
   productId: string;
   productName: string;
   productCurrency?: string;
+  productCashBalance?: number;
   isOpen: boolean;
   onClose: () => void;
   onRefresh?: () => void;
+  onRequestEdit?: () => void;
 }
 
-export function ProductChartModal({ productId, productName, productCurrency = "USD", isOpen, onClose, onRefresh }: ProductChartModalProps) {
+export function ProductChartModal({ productId, productName, productCurrency = "USD", productCashBalance = 0, isOpen, onClose, onRefresh, onRequestEdit }: ProductChartModalProps) {
   const [chartData, setChartData] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [securityTransactions, setSecurityTransactions] = useState<any[]>([]);
@@ -67,11 +70,8 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
           return { secTxns, insts };
         })
       ])
-        .then(([history, txns, { secTxns, insts }]) => {
-          const data = history.map((h) => ({
-            date: format(new Date(h.occurred_at), "MMM d, yy"),
-            nav: h.new_price,
-          }));
+        .then(([, txns, { secTxns, insts }]) => {
+          const data = generateHistoricalAUM(txns, secTxns, insts, productCashBalance);
           setChartData(data);
           setTransactions(txns);
           setSecurityTransactions(secTxns);
@@ -353,6 +353,8 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
             marketValue,
             totalReturn: isClosed || isMatured ? 0 : totalReturn, // Zero out active return if closed/matured
             realizedReturn: totalRealizedReturn,
+            realizedCoupons: realizedCoupons + (isMatured && !isClosed ? openCouponsReceived : 0),
+            realizedCapitalGain: realizedGain + maturityGain,
             couponsReceived: openCouponsReceived,
             instrument,
             openLots: data.lots,
@@ -374,21 +376,13 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
     return allPositions.filter(p => p.status === "Active");
   }, [allPositions]);
 
-  // Compute cash balance
-  const currentCash = useMemo(() => {
-    let cash = 0;
-    transactions.forEach(tx => {
-      if (tx.direction === "inflow") cash += Number(tx.amount);
-      else if (tx.direction === "outflow") cash -= Number(tx.amount);
-    });
-    return cash;
-  }, [transactions]);
+
 
   const totalBookValue = currentHoldings.reduce((sum, h) => sum + h.value, 0);
   const totalMarketValue = currentHoldings.reduce((sum, h) => sum + h.marketValue, 0);
   const totalReturnPortfolio = currentHoldings.reduce((sum, h) => sum + h.totalReturn, 0);
-  const totalRealizedReturn = currentHoldings.reduce((sum, h) => sum + (h.realizedReturn || 0), 0);
-  const totalAUM = totalMarketValue + currentCash;
+  const totalRealizedReturn = allPositions.reduce((sum, h) => sum + (h.realizedReturn || 0), 0);
+  const totalAUM = totalMarketValue + productCashBalance;
 
   const symbol = productCurrency === "NGN" ? "₦" : "$";
   const formatCurrency = (val: number) => `${symbol}${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
@@ -512,7 +506,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                 <h4 className="text-sm font-semibold">Fund Composition (AUM)</h4>
                 <Button size="sm" onClick={() => setIsBuyingNewInstrument(true)}>Add Instrument</Button>
               </div>
-              {(currentHoldings.length > 0 || currentCash !== 0) ? (
+              {(currentHoldings.length > 0 || productCashBalance !== 0) ? (
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr className="border-b border-border text-left text-muted-foreground text-xs uppercase tracking-wider">
@@ -575,14 +569,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                       </td>
                       <td></td>
                     </tr>
-                    <tr>
-                      <td className="py-2 px-3 text-muted-foreground">Cash Balance</td>
-                      <td className="py-2 px-3"></td>
-                      <td className="py-2 px-3 text-right font-mono">{formatCurrency(currentCash)}</td>
-                      <td className="py-2 px-3 text-right font-mono text-primary">{formatCurrency(currentCash)}</td>
-                      <td className="py-2 px-3 text-right font-mono text-muted-foreground">—</td>
-                      <td></td>
-                    </tr>
+
                     <tr className="border-t border-border bg-emerald-50/50">
                       <td className="py-2 px-3 text-muted-foreground">Realized Returns (Closed)</td>
                       <td colSpan={2}></td>
@@ -596,12 +583,12 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                     <tr className="border-t border-border">
                       <td className="py-3 px-3 text-sm text-foreground">Total AUM</td>
                       <td className="py-3 px-3"></td>
-                      <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">{formatCurrency(totalBookValue + currentCash)}</td>
+                      <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">{formatCurrency(totalBookValue + productCashBalance)}</td>
                       <td className="py-3 px-3 text-right font-mono text-sm text-primary">{formatCurrency(totalAUM)}</td>
                       <td className={`py-3 px-3 text-right font-mono text-sm ${
-                          totalAUM > (totalBookValue + currentCash) ? "text-emerald-600" : totalAUM < (totalBookValue + currentCash) ? "text-red-600" : "text-muted-foreground"
+                          totalAUM > (totalBookValue + productCashBalance) ? "text-emerald-600" : totalAUM < (totalBookValue + productCashBalance) ? "text-red-600" : "text-muted-foreground"
                         }`}>
-                          {(totalBookValue + currentCash) > 0 ? ((totalAUM - (totalBookValue + currentCash)) / (totalBookValue + currentCash) * 100).toFixed(2) + "%" : "0.00%"}
+                          {totalBookValue + productCashBalance > 0 ? ((totalAUM - (totalBookValue + productCashBalance)) / (totalBookValue + productCashBalance) * 100).toFixed(2) + "%" : "0.00%"}
                       </td>
                       <td></td>
                     </tr>
@@ -1130,6 +1117,30 @@ function BondDetailsSheet({
               <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title="Current mark-to-market value using the clean price (excluding accrued interest). Clean Price × Face Value ÷ 100.">Market Value (Clean)</span>
               <span className="font-mono font-medium">{formatCurrency(bond.marketValue - accruedCoupon)}</span>
             </div>
+            
+            {bond.realizedReturn !== 0 && (
+              <>
+                <div className="flex justify-between items-center text-sm font-medium border-t pt-2 mt-1">
+                  <span className="text-slate-800 cursor-help border-b border-dotted border-slate-700" title="Net gain or loss realized from closed (sold or matured) positions of this specific instrument.">Realized Returns (Closed)</span>
+                  <span className={`font-mono ${bond.realizedReturn >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {bond.realizedReturn >= 0 ? "+" : ""}{formatCurrency(bond.realizedReturn)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs mt-1 pl-4">
+                  <span className="text-slate-500">└ Capital Gain/Loss:</span>
+                  <span className={`font-mono ${bond.realizedCapitalGain >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {bond.realizedCapitalGain >= 0 ? "+" : ""}{formatCurrency(bond.realizedCapitalGain)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs mt-1 pl-4">
+                  <span className="text-slate-500">└ Cash Coupons:</span>
+                  <span className={`font-mono ${bond.realizedCoupons > 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                    +{formatCurrency(bond.realizedCoupons)}
+                  </span>
+                </div>
+              </>
+            )}
+            
             {hasDetails ? (
               <>
                 {!isTBill && (
@@ -1155,24 +1166,16 @@ function BondDetailsSheet({
                     </span>
                   </div>
                 </div>
-                {bond.realizedReturn !== 0 && (
-                  <div className="flex justify-between items-center text-sm font-medium mt-1">
-                    <span className="text-slate-800 cursor-help border-b border-dotted border-slate-700" title="Net gain or loss realized from closed (sold or matured) positions of this specific instrument.">Realized Returns (Closed)</span>
-                    <span className={`font-mono ${bond.realizedReturn >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                      {bond.realizedReturn >= 0 ? "+" : ""}{formatCurrency(bond.realizedReturn)}
-                    </span>
-                  </div>
-                )}
                 <div className="flex justify-between items-center text-sm font-medium mt-1">
                   <span className="text-slate-800 cursor-help border-b border-dotted border-slate-700" title={isTBill ? "Discount Rate / Yield — The annualized true yield of the Treasury Bill calculated using Actual/365 convention." : "Yield to Maturity — the annualized return if you hold this bond until maturity, assuming all coupons are reinvested at the same rate. Derived from the current market YTM or approximated from the clean price."}>{isTBill ? 'Discount Rate / Yield' : 'HTM Yield (YTM)'}</span>
                   <span className="font-mono text-indigo-600">{ytm.toFixed(2)}%</span>
                 </div>
               </>
-            ) : (
+            ) : !bond.isClosed ? (
               <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded mt-2 border border-amber-200">
                 Please edit the instrument to add maturity date to see yield metrics.
               </div>
-            )}
+            ) : null}
             {hasDetails && !isTBill && (() => {
               const nextCoupon = getNextCouponDate(
                 new Date(instrument.maturity_date),
