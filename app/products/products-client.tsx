@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ASSET_CLASSES } from "@/lib/wealth-data";
@@ -55,6 +56,11 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
   const [editing, setEditing] = useState<any | null>(null);
   const [selectedChartProduct, setSelectedChartProduct] = useState<any | null>(null);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  const handleRefresh = () => {
+    router.refresh();
+  };
 
   const handleApplyPrices = async (updates: any[]) => {
     startTransition(async () => {
@@ -302,6 +308,7 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
         productCurrency={selectedChartProduct?.currency}
         isOpen={Boolean(selectedChartProduct)}
         onClose={() => setSelectedChartProduct(null)}
+        onRefresh={handleRefresh}
       />
     </DashboardShell>
   );

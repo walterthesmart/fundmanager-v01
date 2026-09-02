@@ -105,3 +105,86 @@ export async function fetchSecurityTransactions(productId: string) {
     orderBy: { value_date: 'asc' },
   });
 }
+
+export async function fetchInstruments(symbols: string[]) {
+  return await prisma.instrument.findMany({
+    where: { symbol: { in: symbols } }
+  });
+}
+
+export async function upsertInstrument(data: {
+  symbol: string;
+  name?: string;
+  market_price?: number;
+  market_ytm?: number;
+  face_value?: number;
+  coupon_rate?: number;
+  coupon_freq?: number;
+  maturity_date?: string | null;
+  asset_class?: string;
+  currency?: string;
+}) {
+  const symbolUpper = data.symbol.trim().toUpperCase();
+  const result = await prisma.instrument.upsert({
+    where: { symbol: symbolUpper },
+    update: {
+      market_price: data.market_price,
+      market_ytm: data.market_ytm ?? null,
+      face_value: data.face_value,
+      coupon_rate: data.coupon_rate ?? null,
+      coupon_freq: data.coupon_freq ?? null,
+      maturity_date: data.maturity_date ? new Date(data.maturity_date) : null,
+      asset_class: data.asset_class,
+      currency: data.currency,
+      name: data.name ?? null
+    },
+    create: {
+      symbol: symbolUpper,
+      market_price: data.market_price,
+      market_ytm: data.market_ytm ?? null,
+      face_value: data.face_value ?? 100,
+      coupon_rate: data.coupon_rate ?? null,
+      coupon_freq: data.coupon_freq ?? null,
+      maturity_date: data.maturity_date ? new Date(data.maturity_date) : null,
+      asset_class: data.asset_class ?? "bond",
+      currency: data.currency ?? "NGN",
+      name: data.name ?? null
+    }
+  });
+  revalidatePath('/products');
+  return result;
+}
+
+export async function createSecurityTransaction(data: {
+  product_id: string;
+  direction: "BUY" | "SELL";
+  symbol: string;
+  units: number;
+  price: number;
+  ytm?: number;
+  value_date: string;
+  currency?: string;
+}) {
+  const result = await prisma.securityTransaction.create({
+    data: {
+      product_id: data.product_id,
+      direction: data.direction,
+      symbol: data.symbol,
+      units: data.units,
+      price: data.price,
+      ytm: data.ytm ?? null,
+      value_date: new Date(data.value_date),
+      currency: data.currency ?? "USD",
+    }
+  });
+  revalidatePath('/products');
+  return result;
+}
+
+export async function deleteSecurityTransaction(id: string) {
+  const result = await prisma.securityTransaction.deleteMany({
+    where: { id }
+  });
+  revalidatePath('/products');
+  return result;
+}

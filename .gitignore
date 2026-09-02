@@ -32,3 +32,6 @@ dist-ssr
 *.sw?
 fundmanager-v01/.env
 test-quickbooks/.env
+.next
+.next/
+.env

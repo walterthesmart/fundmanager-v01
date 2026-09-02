@@ -180,6 +180,7 @@ model SecurityTransaction {
   symbol        String?
   units         Float
   price         Float
+  ytm           Float?
   currency      String   @default("USD")
   value_date    DateTime @default(now())
   status        String   @default("completed")
@@ -209,4 +210,21 @@ model SystemConfig {
   is_secret   Boolean  @default(false)
   updated_at  DateTime @updatedAt
   updated_by  String?
+}
+
+model Instrument {
+  id              String   @id @default(cuid())
+  symbol          String   @unique
+  name            String?
+  asset_class     String   @default("bond")
+  currency        String   @default("NGN")
+  market_price    Float    @default(100) // User-updated market price
+  market_ytm      Float?   // User-updated market YTM
+  face_value      Float    @default(100) // Face value multiplier
+  coupon_rate     Float?   // E.g., 10.5 for 10.5%
+  coupon_freq     Int?     // E.g., 2 for semi-annual
+  maturity_date   DateTime?
+  issue_date      DateTime?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 }
