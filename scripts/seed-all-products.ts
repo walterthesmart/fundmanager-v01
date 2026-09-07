@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 async function main() {
   const allProducts = [
     // ── Global Equity ──
-    { name: "Sankore Global Equity Fund", ticker: "SGF-GLO", asset_class: "global_equity", price: 142.50, previous_price: 141.20, price_mode: "manual" },
+    { name: "Sankore Global Equity Fund", ticker: "SGEF-MCB", asset_class: "global_equity", price: 142.50, previous_price: 141.20, price_mode: "automated", price_source: "yahoo-finance" },
     { name: "Sankore S&P 500 Tracker", ticker: "SGF-SPY", asset_class: "global_equity", price: 528.40, previous_price: 525.10, price_mode: "automated", price_source: "yahoo-finance" },
     { name: "Sankore MSCI World Fund", ticker: "SGF-MSCI", asset_class: "global_equity", price: 112.85, previous_price: 111.90, price_mode: "manual" },
     { name: "Sankore Nasdaq 100 Tracker", ticker: "SGF-QQQ", asset_class: "global_equity", price: 485.60, previous_price: 481.30, price_mode: "automated", price_source: "yahoo-finance" },

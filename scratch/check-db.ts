@@ -1,16 +1,11 @@
-import { PrismaClient } from "@prisma/client"
-const prisma = new PrismaClient()
-
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
 async function main() {
-  const history = await prisma.priceHistory.findMany({
-    where: { product: { ticker: "SGF-IAU" } },
-    orderBy: { occurred_at: 'asc' }
+  const tx = await prisma.securityTransaction.findMany({
+    where: { product: { ticker: "GIF($)" } },
+    take: 2,
+    orderBy: { created_at: 'desc' }
   });
-  console.log(`Found ${history.length} records`);
-  if (history.length > 0) {
-    console.log("First 5:", history.slice(0, 5));
-    console.log("Last 5:", history.slice(-5));
-  }
+  console.log(JSON.stringify(tx, null, 2));
 }
-
-main().catch(console.error).finally(() => prisma.$disconnect());
+main().finally(() => prisma.$disconnect());

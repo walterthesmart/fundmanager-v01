@@ -3,19 +3,23 @@
 import { useEffect, useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
-import { fetchProductHistory, fetchProductTransactions, fetchSecurityTransactions, fetchInstruments, upsertInstrument, createSecurityTransaction, deleteSecurityTransaction } from "../../app/actions";
+import { fetchProductHistory, fetchProductTransactions, fetchSecurityTransactions, fetchInstruments, upsertInstrument, createSecurityTransaction, deleteSecurityTransaction, updateMarketPricesFromSheet, fetchLiveQuotes } from "../../app/actions";
 import { format } from "date-fns";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { calculateAccruedInterest, calculateYTM, calculateDirtyPriceFromYTM, calculateCleanPrice, calculateTotalConsideration, getNextCouponDate, getPreviousCouponDate, calculateCouponsReceived, isZeroCoupon, calculateTBillPrice, calculateTBillYield, calculateTBillConsideration } from "../lib/bond-math";
 import { generateHistoricalAUM } from "../lib/historical-chart";
+import { calculatePositions, EquityTransaction } from "../lib/equity-math";
+import { EquityTransactionUploader } from "./equity-transaction-uploader";
 
 interface ProductChartModalProps {
   productId: string;
   productName: string;
+  productAssetClass?: string;
   productCurrency?: string;
   productCashBalance?: number;
   isOpen: boolean;
@@ -24,16 +28,18 @@ interface ProductChartModalProps {
   onRequestEdit?: () => void;
 }
 
-export function ProductChartModal({ productId, productName, productCurrency = "USD", productCashBalance = 0, isOpen, onClose, onRefresh, onRequestEdit }: ProductChartModalProps) {
+export function ProductChartModal({ productId, productName, productAssetClass, productCurrency = "USD", productCashBalance: initialCashBalance = 0, isOpen, onClose, onRefresh, onRequestEdit }: ProductChartModalProps) {
   const [chartData, setChartData] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [securityTransactions, setSecurityTransactions] = useState<any[]>([]);
   const [instruments, setInstruments] = useState<any[]>([]);
   const [editingInstrument, setEditingInstrument] = useState<any>(null);
   const [selectedBond, setSelectedBond] = useState<any>(null);
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"chart" | "transactions" | "security">("chart");
   const [isBuyingNewInstrument, setIsBuyingNewInstrument] = useState(false);
+  const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
 
   const refreshTransactionsAndInstruments = async () => {
     if (productId) {
@@ -67,15 +73,26 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
         fetchSecurityTransactions(productId).then(async (secTxns) => {
           const symbols = Array.from(new Set(secTxns.map(tx => tx.symbol?.trim().toUpperCase()).filter(Boolean)));
           const insts = symbols.length > 0 ? await fetchInstruments(symbols as string[]) : [];
-          return { secTxns, insts };
+          const quotes = symbols.length > 0 ? await fetchLiveQuotes(symbols as string[]) : {};
+          return { secTxns, insts, quotes };
         })
       ])
-        .then(([, txns, { secTxns, insts }]) => {
-          const data = generateHistoricalAUM(txns, secTxns, insts, productCashBalance);
+        .then(([history, txns, { secTxns, insts, quotes }]) => {
+          let data = [];
+          if (history && history.length > 0) {
+            // Sort chronologically and format
+            data = [...history].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime()).map(h => ({
+              date: new Date(h.occurred_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }),
+              nav: Number(h.new_price)
+            }));
+          } else {
+            data = generateHistoricalAUM(txns, secTxns, insts, initialCashBalance);
+          }
           setChartData(data);
           setTransactions(txns);
           setSecurityTransactions(secTxns);
           setInstruments(insts);
+          setLiveQuotes(quotes);
         })
         .finally(() => setLoading(false));
     } else {
@@ -83,12 +100,71 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
       setTransactions([]);
       setSecurityTransactions([]);
       setInstruments([]);
+      setLiveQuotes({});
       setActiveTab("chart");
     }
   }, [isOpen, productId]);
 
-  // Aggregate all historical positions from security transactions
   const allPositions = useMemo(() => {
+    if (productAssetClass === 'global_equity' || productAssetClass === 'local_equity') {
+      const livePrices: Record<string, any> = {};
+      Object.keys(liveQuotes).forEach(sym => {
+        livePrices[sym] = { price: liveQuotes[sym] };
+      });
+      instruments.forEach(i => {
+        if (!livePrices[i.symbol]) {
+          livePrices[i.symbol] = { price: i.market_price || 0 };
+        }
+      });
+      
+      const allTxs: EquityTransaction[] = [];
+      transactions.forEach(tx => {
+        allTxs.push({
+          date: new Date(tx.value_date).toISOString(),
+          symbol: "Cash",
+          type: tx.direction === "inflow" ? "TXIN" : "TXOUT",
+          shares: 1,
+          price: tx.amount,
+          fees: 0,
+          amount: tx.amount
+        });
+      });
+      securityTransactions.forEach(tx => {
+        allTxs.push({
+          date: new Date(tx.value_date).toISOString(),
+          symbol: tx.symbol || "",
+          type: tx.direction as any,
+          shares: tx.units,
+          price: tx.price,
+          fees: 0,
+          amount: tx.units * tx.price
+        });
+      });
+      
+      const positions = calculatePositions(allTxs, livePrices);
+      return positions.map(pos => {
+        const instrument = instruments.find(i => i.symbol.toUpperCase() === pos.symbol.toUpperCase());
+        return {
+          name: pos.symbol,
+          units: pos.shares,
+          value: pos.totalCost,
+          marketPrice: pos.currentPrice,
+          marketValue: pos.currentValue,
+          totalReturn: pos.returnAmount,
+          realizedReturn: 0, // Simplified for now, or calculate if needed
+          realizedCoupons: 0,
+          realizedCapitalGain: 0,
+          couponsReceived: 0,
+          instrument,
+          openLots: [],
+          status: "Active",
+          isClosed: false,
+          isMatured: false,
+          isEquity: true
+        };
+      }).sort((a, b) => b.marketValue - a.marketValue);
+    }
+
     interface Lot {
       units: number;
       faceValue: number;
@@ -96,7 +172,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
       dirtyPrice: number;
       valueDate: Date;
     }
-    const holdings = new Map<string, { displayKey: string; lots: Lot[]; realizedGain: number; realizedCoupons: number }>();
+    const holdings = new Map<string, { displayKey: string; lots: Lot[]; realizedGain: number; realizedCoupons: number; isBond: boolean }>();
     
     // Sort transactions chronologically for FIFO
     const sortedTxns = [...securityTransactions].sort((a,b) => new Date(a.value_date).getTime() - new Date(b.value_date).getTime());
@@ -105,12 +181,13 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
       const rawSymbol = tx.symbol || "Unknown";
       const key = rawSymbol.trim().toUpperCase();
       
-      const current = holdings.get(key) || { displayKey: rawSymbol, lots: [], realizedGain: 0, realizedCoupons: 0 };
       const instrument = instruments.find(i => i.symbol.toUpperCase() === key);
+      const isBond = instrument?.asset_class === "bond" || (!instrument && productAssetClass !== "global_equity" && productAssetClass !== "local_equity");
+      const current = holdings.get(key) || { displayKey: rawSymbol, lots: [] as Lot[], realizedGain: 0, realizedCoupons: 0, isBond };
       
       let accruedAtPurchase = 0;
       let dirtyPrice = Number(tx.price);
-      const faceValue = instrument?.face_value || 100;
+      const faceValue = instrument?.face_value || (isBond ? 100 : 1);
       
       if (instrument && instrument.coupon_rate && instrument.maturity_date) {
         accruedAtPurchase = calculateAccruedInterest(
@@ -123,16 +200,17 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
         dirtyPrice += accruedAtPurchase;
       }
       
-      const trancheFaceValue = Number(tx.units) * 100;
-      const trancheUnits = trancheFaceValue / 100; // calculateTotalConsideration uses nominal units
+      const multiplier = current.isBond ? 100 : 1;
+      const trancheFaceValue = Number(tx.units) * multiplier;
+      const trancheUnits = trancheFaceValue / multiplier; // calculateTotalConsideration uses nominal units
       const trancheCost = calculateTotalConsideration(dirtyPrice, trancheUnits, faceValue);
       
       if (tx.direction === "BUY") {
         let remainingFaceToBuy = trancheFaceValue;
         
         // Offset any short lots first (from unmatched sells)
-        while (remainingFaceToBuy > 0.01 && current.lots.length > 0 && current.lots[0].faceValue < -0.01) {
-           const lot = current.lots[0];
+        while (remainingFaceToBuy > 0.01 && current.lots.length > 0 && current.lots[0]!.faceValue < -0.01) {
+           const lot = current.lots[0]!;
            const shortFace = Math.abs(lot.faceValue);
            
            if (shortFace <= remainingFaceToBuy + 0.01) {
@@ -149,7 +227,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
               current.realizedGain += (proceedsOfCovered - costOfCover);
               
               lot.faceValue += remainingFaceToBuy;
-              lot.units += remainingFaceToBuy / 100;
+              lot.units += remainingFaceToBuy / multiplier;
               lot.cost -= proceedsOfCovered;
               remainingFaceToBuy = 0;
            }
@@ -157,7 +235,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
         
         if (remainingFaceToBuy > 0.01) {
            current.lots.push({
-             units: remainingFaceToBuy / 100,
+             units: remainingFaceToBuy / multiplier,
              faceValue: remainingFaceToBuy,
              cost: (trancheCost / trancheFaceValue) * remainingFaceToBuy,
              dirtyPrice,
@@ -167,8 +245,8 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
       } else if (tx.direction === "SELL") {
         let remainingFaceToSell = trancheFaceValue;
         
-        while (remainingFaceToSell > 0.01 && current.lots.length > 0 && current.lots[0].faceValue > 0.01) {
-          const lot = current.lots[0];
+        while (remainingFaceToSell > 0.01 && current.lots.length > 0 && current.lots[0]!.faceValue > 0.01) {
+          const lot = current.lots[0]!;
           
           if (lot.faceValue <= remainingFaceToSell + 0.01) { // Sell entire lot (with float tolerance)
              const soldFace = lot.faceValue;
@@ -194,7 +272,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
           } else { // Sell partial lot
              const fractionSold = remainingFaceToSell / lot.faceValue;
              const costOfSold = lot.cost * fractionSold;
-             const soldUnits = remainingFaceToSell / 100; 
+             const soldUnits = remainingFaceToSell / multiplier; 
              
              const saleProceeds = calculateTotalConsideration(dirtyPrice, soldUnits, faceValue);
              current.realizedGain += (saleProceeds - costOfSold);
@@ -219,7 +297,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
         
         // If there are still unmatched sells (missing history), push a short lot
         if (remainingFaceToSell > 0.01) {
-           const soldUnits = remainingFaceToSell / 100;
+           const soldUnits = remainingFaceToSell / multiplier;
            const saleProceeds = calculateTotalConsideration(dirtyPrice, soldUnits, faceValue);
            current.lots.push({
              units: -soldUnits,
@@ -243,10 +321,10 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
           const instrument = instruments.find(i => i.symbol.toUpperCase() === data.displayKey.toUpperCase());
           const hasDetails = instrument && instrument.maturity_date;
           
-          data.lots.forEach(lot => {
+          data.lots.forEach((lot: Lot) => {
              openUnits += lot.faceValue; 
              openCost += lot.cost;
-             if (hasDetails && !isZeroCoupon(instrument.coupon_rate) && lot.faceValue > 0) {
+             if (hasDetails && instrument && !isZeroCoupon(instrument.coupon_rate) && lot.faceValue > 0) {
                 openCouponsReceived += calculateCouponsReceived(
                   lot.faceValue,
                   instrument.coupon_rate,
@@ -261,21 +339,21 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
           return { ...data, openUnits, openCost, openCouponsReceived, instrument, hasDetails };
         })
         .map((data) => {
-          const { instrument, hasDetails, openUnits, openCost, openCouponsReceived, realizedGain, realizedCoupons } = data;
+          const { instrument, hasDetails, openUnits, openCost, openCouponsReceived, realizedGain, realizedCoupons, isBond } = data;
           
-          let marketPrice = instrument?.market_price ?? 100;
-          let marketValue = (openUnits * marketPrice) / 100;
+          let marketPrice = instrument?.market_price ?? (isBond ? 100 : Number(data.lots[data.lots.length - 1]?.dirtyPrice || 100));
+          let marketValue = (openUnits * marketPrice) / (isBond ? 100 : 1);
           let accruedCoupon = 0;
           
           const isClosed = Math.abs(openUnits) < 0.01;
           let isMatured = false;
           let status = isClosed ? "Closed" : "Active";
           
-          if (hasDetails) {
-            const isTBill = isZeroCoupon(instrument!.coupon_rate);
+          if (hasDetails && instrument) {
+            const isTBill = isZeroCoupon(instrument.coupon_rate);
             
             // Check maturity status
-            const maturityDate = new Date(instrument!.maturity_date!);
+            const maturityDate = new Date(instrument.maturity_date!);
             if (maturityDate < new Date()) {
                 isMatured = true;
                 status = "Matured";
@@ -283,50 +361,29 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
             
             if (!isClosed && !isMatured) { // Only calculate MTM if still active and not matured
                 if (isTBill) {
-                  if (instrument!.market_ytm != null) {
-                    marketPrice = calculateTBillPrice(instrument!.market_ytm, new Date(), maturityDate);
+                  if (instrument.market_ytm != null) {
+                    marketPrice = calculateTBillPrice(instrument.market_ytm, new Date(), maturityDate);
                   }
                   marketValue = calculateTBillConsideration(marketPrice, openUnits);
                 } else {
-                  // Regular Bond Logic
-                  if (instrument!.market_ytm != null) {
-                    marketPrice = calculateCleanPrice(
-                      instrument!.market_ytm,
-                      instrument!.coupon_rate,
-                      new Date(),
-                      maturityDate,
-                      instrument!.coupon_freq || 2,
-                      instrument!.face_value || 100
-                    );
-                    const dirtyPrice = calculateDirtyPriceFromYTM(
-                      instrument!.market_ytm,
-                      instrument!.coupon_rate,
-                      new Date(),
-                      maturityDate,
-                      instrument!.coupon_freq || 2,
-                      instrument!.face_value || 100
-                    );
-                    marketValue = calculateTotalConsideration(dirtyPrice, openUnits / 100, instrument!.face_value || 100);
-                  } else {
-                    // Using Clean Price input
-                    const accrued = calculateAccruedInterest(
-                      instrument!.face_value || 100,
-                      instrument!.coupon_rate,
-                      maturityDate,
-                      instrument!.coupon_freq || 2,
-                      new Date()
-                    );
-                    const dirtyPrice = marketPrice + accrued;
-                    marketValue = calculateTotalConsideration(dirtyPrice, openUnits / 100, instrument!.face_value || 100);
-                  }
+                  // Regular Bond Logic (Use Clean Price directly from database)
+                  const accrued = calculateAccruedInterest(
+                    instrument.face_value || 100,
+                    instrument.coupon_rate,
+                    maturityDate,
+                    instrument.coupon_freq || 2,
+                    new Date()
+                  );
+                  const dirtyPrice = marketPrice + accrued;
+                  marketValue = calculateTotalConsideration(dirtyPrice, openUnits / (isBond ? 100 : 1), instrument.face_value || (isBond ? 100 : 1));
                   
                   accruedCoupon = calculateAccruedInterest(
-                    instrument!.face_value || 100,
-                    instrument!.coupon_rate,
+                    instrument.face_value || 100,
+                    instrument.coupon_rate,
                     maturityDate,
-                    instrument!.coupon_freq || 2,
+                    instrument.coupon_freq || 2,
                     new Date()
-                  ) * (openUnits / 100);
+                  ) * (openUnits / (isBond ? 100 : 1));
                 }
             } else {
                 marketValue = 0; // If closed or matured, market value is technically 0
@@ -372,8 +429,21 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
   }, [securityTransactions, instruments]);
 
   // Aggregate current holdings from all positions
+  const productCashBalance = useMemo(() => {
+    if (productAssetClass === 'global_equity' || productAssetClass === 'local_equity') {
+      const cashPos = allPositions.find(p => p.name === 'Cash' || p.name === 'GEF Cash');
+      return (cashPos ? cashPos.value : 0) + initialCashBalance;
+    }
+    return transactions.reduce((sum, tx) => {
+      const amt = Number(tx.amount) || 0;
+      if (tx.direction === "inflow") return sum + amt;
+      if (tx.direction === "outflow") return sum - amt;
+      return sum;
+    }, 0) + initialCashBalance;
+  }, [transactions, initialCashBalance, allPositions, productAssetClass]);
+
   const currentHoldings = useMemo(() => {
-    return allPositions.filter(p => p.status === "Active");
+    return allPositions.filter(p => p.status === "Active" && p.name !== "Cash" && p.name !== "GEF Cash");
   }, [allPositions]);
 
 
@@ -484,7 +554,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                         borderRadius: "0px",
                         fontSize: "13px",
                       }}
-                      formatter={(value: number) => [formatCurrency(value), "NAV / Unit"]}
+                      formatter={(value: number) => [`${new Intl.NumberFormat("en-US", { style: "currency", currency: productCurrency }).format(value)}`, "AUM"]}
                     />
                     <Area
                       type="monotone"
@@ -504,9 +574,30 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
             <div className="mt-6 border-t pt-4">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="text-sm font-semibold">Fund Composition (AUM)</h4>
-                <Button size="sm" onClick={() => setIsBuyingNewInstrument(true)}>Add Instrument</Button>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    disabled={isUpdatingPrices}
+                    onClick={async () => {
+                      setIsUpdatingPrices(true);
+                      const result = await updateMarketPricesFromSheet();
+                      if (result.success) {
+                        toast.success(`Successfully updated ${result.updatedCount} prices from Google Sheet`);
+                        await refreshTransactionsAndInstruments();
+                      } else {
+                        toast.error(`Failed to update prices: ${result.error}`);
+                      }
+                      setIsUpdatingPrices(false);
+                    }}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingPrices ? "animate-spin" : ""}`} />
+                    Update market prices
+                  </Button>
+                  <Button size="sm" onClick={() => setIsBuyingNewInstrument(true)}>Add Instrument</Button>
+                </div>
               </div>
-              {(currentHoldings.length > 0 || productCashBalance !== 0) ? (
+              {(currentHoldings.length > 0 || productCashBalance !== 0 || totalRealizedReturn !== 0) ? (
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr className="border-b border-border text-left text-muted-foreground text-xs uppercase tracking-wider">
@@ -514,6 +605,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                       <th className="py-2 px-3 font-medium text-right">Market Price</th>
                       <th className="py-2 px-3 font-medium text-right">Book Value</th>
                       <th className="py-2 px-3 font-medium text-right">Market Value</th>
+                      <th className="py-2 px-3 font-medium text-right">MTM</th>
                       <th className="py-2 px-3 font-medium text-right">Active Return</th>
                       <th className="py-2 px-3 font-medium text-center">Actions</th>
                     </tr>
@@ -538,7 +630,12 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                         <td className={`py-2 px-3 text-right font-mono text-xs font-medium ${
                           h.totalReturn > 0 ? "text-emerald-600" : h.totalReturn < 0 ? "text-red-600" : "text-muted-foreground"
                         }`}>
-                          {h.value > 0 ? (h.totalReturn / h.value * 100).toFixed(2) + "%" : "0.00%"}
+                          {h.totalReturn > 0 ? "+" : ""}{formatCurrency(h.totalReturn)}
+                        </td>
+                        <td className={`py-2 px-3 text-right font-mono text-xs font-medium ${
+                          h.totalReturn > 0 ? "text-emerald-600" : h.totalReturn < 0 ? "text-red-600" : "text-muted-foreground"
+                        }`}>
+                          {h.value !== 0 ? (h.totalReturn / Math.abs(h.value) * 100).toFixed(2) + "%" : "0.00%"}
                         </td>
                         <td className="py-2 px-3 text-center">
                           <Button
@@ -555,6 +652,56 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                         </td>
                       </tr>
                     ))}
+                    {productCashBalance !== 0 && (
+                      <tr className="border-b border-border/50 hover:bg-muted/50">
+                        <td className="py-2 px-3 font-medium text-xs flex items-center gap-2">
+                          Cash Balance
+                          <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-blue-100 text-blue-700">Cash</span>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs">
+                          —
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs">
+                          {formatCurrency(productCashBalance)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs text-primary font-medium">
+                          {formatCurrency(productCashBalance)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
+                          —
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
+                          —
+                        </td>
+                        <td className="py-2 px-3 text-center"></td>
+                      </tr>
+                    )}
+                    {(currentHoldings.length === 0 && productCashBalance === 0 && totalRealizedReturn !== 0) && (
+                      <tr className="border-b border-border/50 hover:bg-muted/50 text-muted-foreground">
+                        <td className="py-2 px-3 font-medium text-xs flex items-center gap-2">
+                          Realized Returns (Closed)
+                          <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-slate-200 text-slate-700">Gain</span>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs">
+                          —
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs">
+                          —
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs font-medium">
+                          —
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
+                          —
+                        </td>
+                        <td className={`py-2 px-3 text-right font-mono text-xs font-medium ${
+                          totalRealizedReturn > 0 ? "text-emerald-600" : totalRealizedReturn < 0 ? "text-red-600" : ""
+                        }`}>
+                          {totalRealizedReturn > 0 ? "+" : ""}{formatCurrency(totalRealizedReturn)}
+                        </td>
+                        <td className="py-2 px-3 text-center"></td>
+                      </tr>
+                    )}
                   </tbody>
                   <tfoot className="bg-muted/10 font-semibold text-xs border-t-2 border-border">
                     <tr>
@@ -562,6 +709,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                       <td className="py-2 px-3"></td>
                       <td className="py-2 px-3 text-right font-mono">{formatCurrency(totalBookValue)}</td>
                       <td className="py-2 px-3 text-right font-mono text-primary">{formatCurrency(totalMarketValue)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-muted-foreground">—</td>
                       <td className={`py-2 px-3 text-right font-mono ${
                           totalReturnPortfolio > 0 ? "text-emerald-600" : totalReturnPortfolio < 0 ? "text-red-600" : "text-muted-foreground"
                         }`}>
@@ -573,7 +721,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                     <tr className="border-t border-border bg-emerald-50/50">
                       <td className="py-2 px-3 text-muted-foreground">Realized Returns (Closed)</td>
                       <td colSpan={2}></td>
-                      <td colSpan={2} className={`py-2 px-3 text-right font-mono font-medium ${
+                      <td colSpan={3} className={`py-2 px-3 text-right font-mono font-medium ${
                           totalRealizedReturn > 0 ? "text-emerald-600" : totalRealizedReturn < 0 ? "text-red-600" : "text-muted-foreground"
                       }`}>
                           {totalRealizedReturn > 0 ? "+" : ""}{formatCurrency(totalRealizedReturn)}
@@ -585,6 +733,7 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                       <td className="py-3 px-3"></td>
                       <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">{formatCurrency(totalBookValue + productCashBalance)}</td>
                       <td className="py-3 px-3 text-right font-mono text-sm text-primary">{formatCurrency(totalAUM)}</td>
+                      <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">—</td>
                       <td className={`py-3 px-3 text-right font-mono text-sm ${
                           totalAUM > (totalBookValue + productCashBalance) ? "text-emerald-600" : totalAUM < (totalBookValue + productCashBalance) ? "text-red-600" : "text-muted-foreground"
                         }`}>
@@ -660,6 +809,15 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
         ) : (
           /* ── Security Transactions Tab ── */
           <div className="flex-1 overflow-auto mt-2" style={{ maxHeight: "440px" }}>
+            {(productAssetClass === 'global_equity' || productAssetClass === 'local_equity') && (
+              <div className="mb-6">
+                <EquityTransactionUploader 
+                  productId={productId} 
+                  onSuccess={refreshTransactionsAndInstruments} 
+                />
+              </div>
+            )}
+            
             {allPositions.length === 0 ? (
               <div className="w-full h-[200px] flex items-center justify-center">
                 <p className="text-muted-foreground">No positions recorded.</p>
@@ -726,6 +884,57 @@ export function ProductChartModal({ productId, productName, productCurrency = "U
                   })}
                 </tbody>
               </table>
+            )}
+
+            {(productAssetClass === 'global_equity' || productAssetClass === 'local_equity') && securityTransactions.length > 0 && (
+              <div className="mt-10 mb-4">
+                <h3 className="font-bold text-[#1e293b] text-sm mb-4">Recent Transactions</h3>
+                <div className="border border-slate-200 rounded-sm overflow-hidden">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-[#f1f5f9] text-[#64748b] tracking-widest text-[10px] uppercase border-b border-slate-200">
+                        <th className="py-2 px-3 font-medium">Date</th>
+                        <th className="py-2 px-3 font-medium">Symbol</th>
+                        <th className="py-2 px-3 font-medium">Type</th>
+                        <th className="py-2 px-3 font-medium text-right">Shares</th>
+                        <th className="py-2 px-3 font-medium text-right">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...securityTransactions]
+                        .sort((a, b) => new Date(b.value_date).getTime() - new Date(a.value_date).getTime())
+                        .slice(0, 50)
+                        .map((tx, i) => (
+                        <tr key={tx.id || i} className="border-b border-slate-100 last:border-none hover:bg-slate-50">
+                          <td className="py-2 px-3 text-xs whitespace-nowrap">
+                            {format(new Date(tx.value_date), "MMM d, yyyy")}
+                          </td>
+                          <td className="py-2 px-3 text-xs font-bold text-[#1e293b]">{tx.symbol}</td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`inline-flex items-center text-[10px] font-semibold uppercase px-2 py-0.5 rounded-sm ${
+                                tx.direction === "BUY"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : tx.direction === "SELL"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {tx.direction}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-xs text-right font-mono text-slate-600">
+                            {Number(tx.units).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-right font-mono text-slate-600">
+                            ₦{Number(tx.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -1298,7 +1507,7 @@ function BondDetailsSheet({
                             {tx.direction}
                           </span>
                         </td>
-                        <td className="py-2 px-3 font-mono text-right">{(Number(tx.units) * 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="py-2 px-3 font-mono text-right">{(Number(tx.units) * (bond.isBond ? 100 : 1)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td className="py-2 px-3 font-mono text-right">{Number(tx.price).toFixed(4)}</td>
                       </tr>
                     ))}

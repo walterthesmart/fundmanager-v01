@@ -150,7 +150,7 @@ export function generateHistoricalAUM(
        }
     });
     
-    const nav = baseCash + netContributions + totalRealizedGain + totalCouponsReceived + totalBookValue;
+    const nav = baseCash + totalBookValue;
     
     // Only push if it's the last event of the day to avoid duplicates
     const nextEvent = events[index + 1];

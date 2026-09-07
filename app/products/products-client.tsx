@@ -43,7 +43,7 @@ import { ProductChartModal } from "@/components/product-chart-modal";
 
 const PRICE_SOURCES = [
   "NGX Market Feed",
-  "Bloomberg",
+  "FBN UK",
   "Refinitiv",
   "CBN OMO Rates",
   "ICE Data Services",
@@ -87,8 +87,10 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
     startTransition(async () => {
       try {
         const res = await refreshLivePricesAction();
-        if (res && res.updated && res.updated > 0) {
-          toast.success(`Refreshed ${res.updated} product prices from live sources`);
+        if (typeof res === "number" && res > 0) {
+          toast.success(`Refreshed ${res} product prices from live sources`);
+        } else if (typeof res === "object" && res !== null && "updated" in res && (res as any).updated > 0) {
+          toast.success(`Refreshed ${(res as any).updated} product prices from live sources`);
         } else {
           toast.info("No prices were updated");
         }
@@ -212,8 +214,12 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
         {ASSET_CLASSES.map((ac) => {
           const list = products.filter((p) => p.asset_class === ac.value);
           list.sort((a, b) => {
+            if (a.ticker === "SGEF-MCB") return -1;
+            if (b.ticker === "SGEF-MCB") return 1;
             if (a.ticker.includes("GIF")) return -1;
             if (b.ticker.includes("GIF")) return 1;
+            if (a.ticker === "SGF-IAU") return -1;
+            if (b.ticker === "SGF-IAU") return 1;
             return a.name.localeCompare(b.name);
           });
           return (
@@ -240,9 +246,13 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium flex items-center gap-2">
                             {product.name}
-                            {product.ticker.includes("GIF") ? (
+                            {product.ticker.includes("GIF") || product.ticker === "SGEF-MCB" ? (
                               <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-emerald-600 text-white ml-1">
                                 LIVE
+                              </span>
+                            ) : product.ticker === "SADF" || product.ticker === "SGF-IAU" ? (
+                              <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-orange-500 text-white ml-1">
+                                PAUSED
                               </span>
                             ) : (
                               <span className="inline-flex items-center text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-slate-200 text-slate-600 ml-1">
@@ -294,7 +304,7 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
                         )}
                         <span className="text-xs text-muted-foreground">
                           {product.price_mode === "automated"
-                            ? `source: ${product.price_source ?? "unspecified"}`
+                            ? `Source: ${product.price_source === 'yahoo-finance' ? 'Yahoo Finance' : (product.price_source ?? "Unspecified")}`
                             : `last set ${formatDistanceToNow(new Date(product.price_updated_at), { addSuffix: true })}`}
                         </span>
                       </div>
@@ -314,14 +324,15 @@ export function ProductsClient({ initialProducts, userId }: { initialProducts: a
         product={editing}
         pending={isPending}
         onClose={() => setEditing(null)}
-        onSave={(price, mode, source) =>
-          editing && handleApplyPrices([{ product: editing, price, mode, source }])
+        onSave={(price, mode, source, cashValue) =>
+          editing && handleApplyPrices([{ product: editing, price, mode, source, cash_balance: cashValue }])
         }
       />
 
       <ProductChartModal 
         productId={selectedChartProduct?.id} 
         productName={selectedChartProduct?.name}
+        productAssetClass={selectedChartProduct?.asset_class}
         productCurrency={selectedChartProduct?.currency}
         productCashBalance={Number(selectedChartProduct?.cash_balance || 0)}
         isOpen={Boolean(selectedChartProduct)}
@@ -341,20 +352,23 @@ function EditPriceDialog({
   product: any | null;
   pending: boolean;
   onClose: () => void;
-  onSave: (price: number, mode: "manual" | "automated", source: string | null) => void;
+  onSave: (price: number, mode: "manual" | "automated", source: string | null, cashValue: number) => void;
 }) {
   const [price, setPrice] = useState("");
   const [mode, setMode] = useState<"manual" | "automated">("manual");
   const [source, setSource] = useState<string>(PRICE_SOURCES[0] ?? "");
 
+  const [cashBalance, setCashBalance] = useState("");
+
   const key = product?.id ?? "none";
   useMemo(() => {
     if (product) {
       setPrice(String(product.price));
+      setCashBalance(String(product.cash_balance ?? 0));
       setMode(product.price_mode);
       setSource(product.price_source ?? PRICE_SOURCES[0] ?? "");
     }
-  }, [key]);
+  }, [key, product]);
 
   return (
     <Dialog open={Boolean(product)} onOpenChange={(open) => !open && onClose()}>
@@ -362,51 +376,19 @@ function EditPriceDialog({
         <DialogHeader>
           <DialogTitle>{product?.name}</DialogTitle>
           <DialogDescription>
-            Set the price manually or hand pricing over to an automated source. Every change is
-            written to price history.
+            Update the fund's manual cash balance.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Price ({product?.currency})</Label>
+            <Label>Cash Balance ({product?.currency})</Label>
             <Input
               type="number"
-              min="0.0001"
-              step="0.0001"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
+              value={cashBalance}
+              onChange={(e) => setCashBalance(e.target.value)}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Pricing mode</Label>
-            <Select value={mode} onValueChange={(v) => setMode(v as "manual" | "automated")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">Manual</SelectItem>
-                <SelectItem value="automated">Automated</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {mode === "automated" && (
-            <div className="space-y-2">
-              <Label>Price source</Label>
-              <Select value={source} onValueChange={setSource}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRICE_SOURCES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
 
         <DialogFooter>
@@ -414,12 +396,9 @@ function EditPriceDialog({
             className="w-full"
             disabled={pending}
             onClick={() => {
-              const value = Number(price);
-              if (!Number.isFinite(value) || value <= 0) {
-                toast.error("Enter a price above zero");
-                return;
-              }
-              onSave(value, mode, mode === "automated" ? source : null);
+              const value = Number(price) || 100; // Fallback so it doesn't fail
+              const cashValue = Number(cashBalance) || 0;
+              onSave(value, mode, mode === "automated" ? source : null, cashValue);
             }}
           >
             {pending ? (

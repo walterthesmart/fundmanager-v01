@@ -1,0 +1,15 @@
+SYMB,SETTLEMENT DATE,TRAN,DIRTY PRICE,FACE VALUE,BONDCOUP,BONDFREQ,MATURITY DATE,CURRENCY,INCOME STYLE
+EGYPT 8 7/8 05/29/50,26-Aug-25,BUY,89.64,5000,8.88%,2,29-May-50,USD,Bond Interest
+EGYPT 8 7/8 05/29/50,19-Sep-25,SELL,93.59,5000,8.88%,2,29-May-50,USD,Bond Interest
+ANGOL 9.875 10/15/35,9-Dec-25,BUY,101.73,5000,9.88%,2,15-Oct-35,USD,Bond Interest
+ANGOL 9.875 10/15/35,7-Apr-26,SELL,105.218056,5000,9.88%,2,15-Oct-35,USD,Bond Interest
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,7-Apr-26,,,,,,,,

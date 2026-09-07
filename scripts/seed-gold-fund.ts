@@ -2,7 +2,6 @@ import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
-import yahooFinance from 'yahoo-finance2';
 
 const prisma = new PrismaClient();
 
@@ -26,24 +25,17 @@ async function main() {
     });
   }
 
-  // 2. Fetch live price
-  try {
-    console.log("Fetching live price for IAU from Yahoo Finance...");
-    const quote = await yahooFinance.quote('IAU');
-    if (quote && quote.regularMarketPrice) {
-      await prisma.product.update({
-        where: { id: goldFund.id },
-        data: {
-          previous_price: goldFund.price,
-          price: quote.regularMarketPrice,
-          price_updated_at: new Date()
-        }
-      });
-      console.log(`Updated IAU price to $${quote.regularMarketPrice}`);
+  // 2. Set NAV to 100 as the fund has closed
+  console.log("Setting Gold Fund NAV to 100...");
+  await prisma.product.update({
+    where: { id: goldFund.id },
+    data: {
+      previous_price: goldFund.price,
+      price: 100,
+      price_updated_at: new Date()
     }
-  } catch (error) {
-    console.error("Failed to fetch price from Yahoo Finance:", error);
-  }
+  });
+  console.log("Updated Gold Fund price to $100");
 
   // 3. Clear old transactions for this fund
   console.log("Clearing existing dummy transactions for Gold Fund...");
@@ -51,7 +43,7 @@ async function main() {
   await prisma.securityTransaction.deleteMany({ where: { product_id: goldFund.id } });
 
   // 4. Ingest Gold Fund Cash.csv
-  const cashCsvPath = path.join(process.cwd(), 'Gold Fund Cash.csv');
+  const cashCsvPath = path.join(process.cwd(), 'Gold Fund', 'Gold Fund Cash.csv');
   if (fs.existsSync(cashCsvPath)) {
     console.log("Reading Gold Fund Cash.csv...");
     const cashData = fs.readFileSync(cashCsvPath, 'utf8');
@@ -117,7 +109,7 @@ async function main() {
   }
 
   // 5. Ingest Gold Fund Transactions.csv
-  const txCsvPath = path.join(process.cwd(), 'Gold Fund Transactions.csv');
+  const txCsvPath = path.join(process.cwd(), 'Gold Fund', 'Gold Fund Transactions.csv');
   if (fs.existsSync(txCsvPath)) {
     console.log("Reading Gold Fund Transactions.csv...");
     const txData = fs.readFileSync(txCsvPath, 'utf8');

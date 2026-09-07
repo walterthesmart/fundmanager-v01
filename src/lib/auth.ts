@@ -10,8 +10,8 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      clientId: process.env['GOOGLE_CLIENT_ID'] || "",
+      clientSecret: process.env['GOOGLE_CLIENT_SECRET'] || "",
     }),
     CredentialsProvider({
       name: "Credentials",
@@ -56,7 +56,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async session({ session, token }) {
       if (session.user && token.sub) {
-        session.user.id = token.sub;
+        (session.user as any).id = token.sub;
         // Fetch role if needed
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },

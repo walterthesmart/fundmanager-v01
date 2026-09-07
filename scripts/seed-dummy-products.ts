@@ -6,11 +6,12 @@ async function main() {
   const dummyProducts = [
     {
       name: "Sankore Global Equity Fund",
-      ticker: "SGF-GLO",
+      ticker: "SGEF-MCB",
       asset_class: "global_equity",
       price: 142.50,
       previous_price: 141.20,
-      price_mode: "manual",
+      price_mode: "automated",
+      price_source: "yahoo-finance",
     },
     {
       name: "Sankore Local Equity Fund",
