@@ -170,7 +170,8 @@ export default async function ProductsPage() {
          }
       });
       
-      aum = bondValue + ((product as any).cash_balance || 0);
+      const manualCash = Number((product as any).cash_balance?.toString() || 0);
+      aum = bondValue + manualCash;
     }
     const { cash_transactions, security_transactions, ...rest } = product;
     

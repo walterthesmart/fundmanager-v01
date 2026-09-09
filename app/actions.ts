@@ -87,20 +87,46 @@ export async function refreshLivePricesAction() {
   return updatedCount;
 }
 
-export async function fetchLiveQuotes(symbols: string[]): Promise<Record<string, number>> {
-  const quotes: Record<string, number> = {};
-  for (const sym of symbols) {
-    if (!sym || sym.trim() === '' || sym === 'Cash' || sym === 'GEF Cash') continue;
-    try {
-      // Just a direct hit for the ticker symbol.
-      const quote = (await yahooFinance.quote(sym)) as any;
-      if (quote && quote.regularMarketPrice) {
-        quotes[sym] = quote.regularMarketPrice;
+export interface LiveQuoteInfo {
+  price: number;
+  change: number;
+  changePercent: number;
+  name: string;
+}
+
+export async function fetchLiveQuotes(symbols: string[]): Promise<Record<string, LiveQuoteInfo>> {
+  const quotes: Record<string, LiveQuoteInfo> = {};
+  const validSymbols = symbols.filter(sym => sym && sym.trim() !== '' && sym !== 'Cash' && sym !== 'GEF Cash');
+  
+  if (validSymbols.length === 0) return quotes;
+
+  await Promise.all(
+    validSymbols.map(async (sym) => {
+      try {
+        const quote = (await yahooFinance.quote(sym)) as any;
+        if (quote && quote.regularMarketPrice) {
+          const companyName = quote.shortName || quote.longName || sym;
+          quotes[sym] = {
+            price: quote.regularMarketPrice,
+            change: quote.regularMarketChange ?? 0,
+            changePercent: quote.regularMarketChangePercent ?? 0,
+            name: companyName
+          };
+          // Also persist the instrument name in DB
+          if (companyName && companyName !== sym) {
+            try {
+              await prisma.instrument.updateMany({
+                where: { symbol: sym },
+                data: { name: companyName }
+              });
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to fetch quote for ${sym}:`, err);
       }
-    } catch (err) {
-      console.error(`Failed to fetch quote for ${sym}:`, err);
-    }
-  }
+    })
+  );
   return quotes;
 }
 
@@ -459,6 +485,67 @@ export async function clearEquityTransactions(productId: string) {
       cleared: deletedSec.count + deletedCash.count 
     };
   } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function fetchHistoricalQuotes(symbol: string, period1: string, period2?: string): Promise<any[]> {
+  try {
+    const data = await yahooFinance.historical(symbol, {
+      period1,
+      period2: period2 || new Date().toISOString().split('T')[0],
+      interval: '1d'
+    });
+    return data;
+  } catch (error) {
+    console.error(`Failed to fetch historical quotes for ${symbol}:`, error);
+    return [];
+  }
+}
+
+export async function snapshotProductNAV(productId: string, currentNav: number) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // normalize to beginning of the day
+
+    // Check if we already have a snapshot for today
+    const existing = await prisma.priceHistory.findFirst({
+      where: {
+        product_id: productId,
+        occurred_at: {
+          gte: today,
+        },
+      }
+    });
+
+    if (existing) {
+      // Update existing snapshot for today
+      await prisma.priceHistory.update({
+        where: { id: existing.id },
+        data: { new_price: currentNav, occurred_at: new Date() }
+      });
+    } else {
+      // Get the last known price to set as old_price
+      const lastHistory = await prisma.priceHistory.findFirst({
+        where: { product_id: productId },
+        orderBy: { occurred_at: 'desc' }
+      });
+      const old_price = lastHistory ? lastHistory.new_price : currentNav;
+
+      await prisma.priceHistory.create({
+        data: {
+          product_id: productId,
+          old_price: old_price,
+          new_price: currentNav,
+          occurred_at: new Date()
+        }
+      });
+    }
+
+    revalidatePath('/products');
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to snapshot NAV:", error);
     return { success: false, error: error.message };
   }
 }

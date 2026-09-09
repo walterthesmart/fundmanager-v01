@@ -64,8 +64,12 @@ export function generateHistoricalAUM(
     events.forEach((event, index) => {
       const nextEvent = events[index + 1];
       if (!nextEvent || nextEvent.date.getTime() !== event.date.getTime()) {
-        const positions = calculatePositions(allTxs, livePrices, event.date.toISOString());
-        const nav = positions.reduce((sum, pos) => sum + pos.currentValue, 0) + baseCash;
+        // Filter transactions up to this event date
+        const txsUpToDate = allTxs.filter(tx => new Date(tx.date).getTime() <= event.date.getTime());
+        // Calculate positions as of this date
+        const positions = calculatePositions(txsUpToDate, livePrices); 
+        // Use totalCost (Book Value) which includes cash balance
+        const nav = positions.reduce((sum, pos) => sum + pos.totalCost, 0) + baseCash;
         chartData.push({
           date: formatDate(event.date),
           nav

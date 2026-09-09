@@ -21,7 +21,10 @@ export interface PortfolioPosition {
   returnAmount: number;
   returnPercentage: number;
   realizedReturn: number;
+  totalInvested?: number;
+  totalProceeds?: number;
   assetClass?: string;
+  isClosed?: boolean;
 }
 
 export const getHistoricalPrice = (livePrices: Record<string, { price: number; historical?: { date: string; close: number }[] }>, symbol: string, targetDateStr: string): number | null => {
@@ -48,7 +51,7 @@ export function calculatePositions(
   livePrices: Record<string, { price: number; historical?: { date: string; close: number }[] }>,
   startDateStr?: string | null
 ): PortfolioPosition[] {
-  const positionsMap: Record<string, { shares: number; totalCost: number; realizedReturn: number; assetClass: string }> = {};
+  const positionsMap: Record<string, { shares: number; totalCost: number; realizedReturn: number; totalInvested: number; totalProceeds: number; assetClass: string }> = {};
   let cashBalance = 0;
 
   // Sort transactions chronologically
@@ -73,11 +76,17 @@ export function calculatePositions(
     }
 
     if (!positionsMap[tx.symbol]) {
-      positionsMap[tx.symbol] = { shares: 0, totalCost: 0, realizedReturn: 0, assetClass: 'Stock' };
+      positionsMap[tx.symbol] = { shares: 0, totalCost: 0, realizedReturn: 0, totalInvested: 0, totalProceeds: 0, assetClass: 'Stock' };
     }
 
     const pos = positionsMap[tx.symbol]!;
     (pos as any).lastTradedPrice = tx.price;
+
+    if (tx.type === 'BUY') {
+      pos.totalInvested += amount;
+    } else if (tx.type === 'SELL') {
+      pos.totalProceeds += sellProceeds;
+    }
     
     // We assume tx.shares is positive in the dataset for both BUY and SELL.
     const isBuy = tx.type === 'BUY';
@@ -151,7 +160,7 @@ export function calculatePositions(
 
   Object.keys(positionsMap).forEach((symbol) => {
     const pos = positionsMap[symbol]!;
-    if (Math.abs(pos.shares) <= 0.000001) return; // Filter out closed positions
+    const isClosed = Math.abs(pos.shares) <= 0.000001;
 
     const currentPrice = livePrices[symbol]?.price || (pos as any).lastTradedPrice || 0;
     const averagePrice = pos.shares !== 0 ? Math.abs(pos.totalCost / pos.shares) : 0;
@@ -169,7 +178,10 @@ export function calculatePositions(
       returnAmount,
       returnPercentage,
       realizedReturn: pos.realizedReturn,
+      totalInvested: pos.totalInvested,
+      totalProceeds: pos.totalProceeds,
       assetClass: pos.assetClass,
+      isClosed,
     });
   });
 

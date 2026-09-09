@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
-import { fetchProductHistory, fetchProductTransactions, fetchSecurityTransactions, fetchInstruments, upsertInstrument, createSecurityTransaction, deleteSecurityTransaction, updateMarketPricesFromSheet, fetchLiveQuotes } from "../../app/actions";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ReferenceDot } from "recharts";
+import { fetchProductHistory, fetchProductTransactions, fetchSecurityTransactions, fetchInstruments, upsertInstrument, createSecurityTransaction, deleteSecurityTransaction, updateMarketPricesFromSheet, fetchLiveQuotes, fetchHistoricalQuotes, snapshotProductNAV, LiveQuoteInfo } from "../../app/actions";
 import { format } from "date-fns";
 import { Pencil, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
   const [instruments, setInstruments] = useState<any[]>([]);
   const [editingInstrument, setEditingInstrument] = useState<any>(null);
   const [selectedBond, setSelectedBond] = useState<any>(null);
-  const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, LiveQuoteInfo>>({});
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"chart" | "transactions" | "security">("chart");
   const [isBuyingNewInstrument, setIsBuyingNewInstrument] = useState(false);
@@ -78,15 +78,22 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
         })
       ])
         .then(([history, txns, { secTxns, insts, quotes }]) => {
-          let data = [];
+          let data = generateHistoricalAUM(txns, secTxns, insts, initialCashBalance, productAssetClass);
+          
           if (history && history.length > 0) {
-            // Sort chronologically and format
-            data = [...history].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime()).map(h => ({
+            const sortedHistory = [...history].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
+            const historyData = sortedHistory.map(h => ({
               date: new Date(h.occurred_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }),
               nav: Number(h.new_price)
             }));
-          } else {
-            data = generateHistoricalAUM(txns, secTxns, insts, initialCashBalance, productAssetClass);
+            
+            // Remove any generated data points that fall on or after the first history snapshot
+            const firstSnapshotDate = new Date(sortedHistory[0].occurred_at);
+            // Normalize to start of day for comparison
+            firstSnapshotDate.setHours(0,0,0,0);
+            
+            data = data.filter(d => new Date(d.date).getTime() < firstSnapshotDate.getTime());
+            data = [...data, ...historyData];
           }
           setChartData(data);
           setTransactions(txns);
@@ -100,7 +107,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
       setTransactions([]);
       setSecurityTransactions([]);
       setInstruments([]);
-      setLiveQuotes({});
+      setLiveQuotes({} as Record<string, LiveQuoteInfo>);
       setActiveTab("chart");
     }
   }, [isOpen, productId]);
@@ -109,7 +116,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
     if (productAssetClass === 'global_equity' || productAssetClass === 'local_equity') {
       const livePrices: Record<string, any> = {};
       Object.keys(liveQuotes).forEach(sym => {
-        livePrices[sym] = { price: liveQuotes[sym] };
+        livePrices[sym] = { price: liveQuotes[sym]?.price ?? liveQuotes[sym] };
       });
       instruments.forEach(i => {
         if (!livePrices[i.symbol]) {
@@ -147,9 +154,9 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
         return {
           name: pos.symbol,
           units: pos.shares,
-          value: pos.totalCost,
+          value: pos.isClosed ? (pos.totalInvested || 0) : pos.totalCost,
           marketPrice: pos.currentPrice,
-          marketValue: pos.currentValue,
+          marketValue: pos.isClosed ? (pos.totalProceeds || 0) : pos.currentValue,
           totalReturn: pos.returnAmount,
           realizedReturn: pos.realizedReturn,
           realizedCoupons: 0,
@@ -157,8 +164,8 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
           couponsReceived: 0,
           instrument,
           openLots: [],
-          status: "Active",
-          isClosed: false,
+          status: (pos.isClosed ?? false) ? "Closed" : "Active",
+          isClosed: pos.isClosed ?? false,
           isMatured: false,
           isEquity: true
         };
@@ -617,6 +624,23 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                     <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingPrices ? "animate-spin" : ""}`} />
                     Update market prices
                   </Button>
+                  <Button 
+                    size="sm" 
+                    variant="secondary"
+                    onClick={async () => {
+                      setIsUpdatingPrices(true);
+                      const result = await snapshotProductNAV(productId, totalAUM);
+                      if (result.success) {
+                        toast.success(`Successfully snapshotted today's AUM: ${formatCurrency(totalAUM)}`);
+                        if (onRefresh) onRefresh(); // To reload history
+                      } else {
+                        toast.error(`Failed to snapshot AUM: ${result.error}`);
+                      }
+                      setIsUpdatingPrices(false);
+                    }}
+                  >
+                    Snapshot NAV
+                  </Button>
                   <Button size="sm" onClick={() => setIsBuyingNewInstrument(true)}>Add Instrument</Button>
                 </div>
               </div>
@@ -999,12 +1023,11 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
           bond={selectedBond}
           securityTransactions={securityTransactions}
           productCurrency={productCurrency}
+          liveQuotes={liveQuotes}
           onClose={() => setSelectedBond(null)}
           productId={productId}
           onRefresh={refreshTransactionsAndInstruments}
           onEdit={() => {
-             // Close the sheet when opening edit to avoid stacking (optional, but let's just leave sheet open behind it or not?)
-             // Actually, the edit dialog sits on top.
              setEditingInstrument(selectedBond);
           }}
         />
@@ -1216,6 +1239,7 @@ function BondDetailsSheet({
   bond, 
   securityTransactions,
   productCurrency,
+  liveQuotes,
   onClose,
   productId,
   onRefresh,
@@ -1224,6 +1248,7 @@ function BondDetailsSheet({
   bond: any; 
   securityTransactions: any[];
   productCurrency: string;
+  liveQuotes: Record<string, LiveQuoteInfo>;
   onClose: () => void;
   productId: string;
   onRefresh: () => void;
@@ -1231,6 +1256,8 @@ function BondDetailsSheet({
 }) {
   const [isAddingTranche, setIsAddingTranche] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [priceHistory, setPriceHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const symbol = productCurrency === "NGN" ? "₦" : "$";
   const formatCurrency = (val: number) => `${symbol}${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
@@ -1282,6 +1309,60 @@ function BondDetailsSheet({
     }).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
   }, [bond]);
 
+  useEffect(() => {
+    if (bond.isEquity && bond.name) {
+      const symbolTxns = securityTransactions
+          .filter(tx => (tx.symbol || "").trim().toUpperCase() === (bond.name || "").trim().toUpperCase())
+          .sort((a,b) => new Date(a.value_date).getTime() - new Date(b.value_date).getTime());
+          
+      if (symbolTxns.length === 0) return;
+      
+      setIsLoadingHistory(true);
+      const firstPurchaseDate = new Date(symbolTxns[0].value_date);
+      const period1 = firstPurchaseDate.toISOString().split('T')[0];
+      let period2: string | undefined;
+      
+      if (bond.isClosed) {
+        // Find the last sell transaction date
+        const lastTxn = symbolTxns[symbolTxns.length - 1];
+        const nextDay = new Date(lastTxn.value_date);
+        nextDay.setDate(nextDay.getDate() + 1); // Add a day to ensure the period covers the sell day
+        period2 = nextDay.toISOString().split('T')[0];
+      }
+      
+      fetchHistoricalQuotes(bond.name, period1, period2).then(data => {
+        const formattedData = data.map((d: any) => {
+          const dateStr = new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+          // Check if any transactions happened on this date
+          const dayTxns = symbolTxns.filter(tx => {
+            const txDate = new Date(tx.value_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+            return txDate === dateStr;
+          });
+          let marker: string | null = null;
+          let markerDetails: string[] = [];
+          dayTxns.forEach(tx => {
+            const dir = tx.direction?.toUpperCase();
+            if (dir === 'BUY') {
+              marker = marker === 'SELL' ? 'BOTH' : 'BUY';
+              markerDetails.push(`Buy ${tx.units} @ $${Number(tx.price).toFixed(2)}`);
+            } else if (dir === 'SELL') {
+              marker = marker === 'BUY' ? 'BOTH' : 'SELL';
+              markerDetails.push(`Sell ${tx.units} @ $${Number(tx.price).toFixed(2)}`);
+            }
+          });
+          return {
+            date: dateStr,
+            price: d.close,
+            marker,
+            markerDetails
+          };
+        });
+        setPriceHistory(formattedData);
+        setIsLoadingHistory(false);
+      });
+    }
+  }, [bond.name, bond.isEquity, bond.isClosed, securityTransactions]);
+
   const instrument = bond.instrument;
   const hasDetails = instrument && instrument.maturity_date;
   const isTBill = hasDetails && isZeroCoupon(instrument.coupon_rate);
@@ -1325,7 +1406,9 @@ function BondDetailsSheet({
       <SheetContent className="sm:max-w-[800px] overflow-y-auto w-full">
         <SheetHeader className="mb-6">
           <div className="flex items-center gap-2">
-            <SheetTitle className="text-xl text-primary">{bond.name}</SheetTitle>
+            <SheetTitle className="text-xl text-primary">
+              {bond.name}
+            </SheetTitle>
             {onEdit && (
               <Button
                 size="icon"
@@ -1338,20 +1421,45 @@ function BondDetailsSheet({
               </Button>
             )}
           </div>
-          <div className="flex gap-4 text-sm text-muted-foreground mt-2">
-            {!isTBill && (
-              <div>
-                <span className="block text-xs font-semibold uppercase">Coupon</span>
-                <span className="font-mono text-foreground">{instrument?.coupon_rate ? `${instrument.coupon_rate}%` : 'N/A'}</span>
+          {bond.isEquity && (() => {
+            const quoteInfo = liveQuotes[(bond.name || "").trim().toUpperCase()];
+            const companyName = quoteInfo?.name || instrument?.name;
+            const price = quoteInfo?.price ?? bond.marketPrice;
+            const change = quoteInfo?.change ?? 0;
+            const changePercent = quoteInfo?.changePercent ?? 0;
+            const isPositive = change >= 0;
+            return (
+              <div className="mt-1">
+                {companyName && (
+                  <p className="text-sm text-muted-foreground">{companyName}</p>
+                )}
+                {price > 0 && (
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-2xl font-semibold font-mono">{formatCurrency(price)}</span>
+                    <span className={`text-sm font-mono font-medium ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {isPositive ? '+' : ''}{change.toFixed(2)} ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-            <div>
-              <span className="block text-xs font-semibold uppercase">Maturity</span>
-              <span className="font-mono text-foreground">
-                {instrument?.maturity_date ? new Date(instrument.maturity_date).toLocaleDateString() : 'N/A'}
-              </span>
+            );
+          })()}
+          {!bond.isEquity && (
+            <div className="flex gap-4 text-sm text-muted-foreground mt-2">
+              {!isTBill && (
+                <div>
+                  <span className="block text-xs font-semibold uppercase">Coupon</span>
+                  <span className="font-mono text-foreground">{instrument?.coupon_rate ? `${instrument.coupon_rate}%` : 'N/A'}</span>
+                </div>
+              )}
+              <div>
+                <span className="block text-xs font-semibold uppercase">Maturity</span>
+                <span className="font-mono text-foreground">
+                  {instrument?.maturity_date ? new Date(instrument.maturity_date).toLocaleDateString() : 'N/A'}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </SheetHeader>
         
         <div className="space-y-6">
@@ -1474,6 +1582,92 @@ function BondDetailsSheet({
               );
             })()}
           </div>
+
+          {bond.isEquity && (
+            <div className="mb-6">
+              <div className="flex justify-between items-center border-b pb-2 mb-3">
+                <h3 className="text-sm font-semibold text-slate-800 uppercase">Price History</h3>
+              </div>
+              <div className="h-[250px] w-full border rounded-md bg-white p-2">
+                {isLoadingHistory ? (
+                   <div className="w-full h-full flex items-center justify-center">
+                     <p className="text-muted-foreground animate-pulse text-sm">Loading price history...</p>
+                   </div>
+                ) : priceHistory.length === 0 ? (
+                   <div className="w-full h-full flex items-center justify-center">
+                     <p className="text-muted-foreground text-sm">No historical data available.</p>
+                   </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={priceHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: "#64748b" }}
+                        tickMargin={8}
+                        minTickGap={30}
+                      />
+                      <YAxis
+                        domain={["auto", "auto"]}
+                        tickFormatter={(val) => `${symbol}${val.toFixed(2)}`}
+                        tick={{ fontSize: 10, fill: "#64748b" }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                        }}
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload || !payload.length) return null;
+                          const data = payload[0]?.payload;
+                          return (
+                            <div className="bg-white border border-slate-200 rounded px-3 py-2 shadow-md text-xs">
+                              <p className="font-medium text-slate-700">{label}</p>
+                              <p className="text-slate-600">{symbol}{Number(data.price).toFixed(2)}</p>
+                              {data.marker && data.markerDetails?.map((d: string, i: number) => (
+                                <p key={i} className={`font-semibold mt-1 ${d.startsWith('Buy') ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {d.startsWith('Buy') ? '▲' : '▼'} {d}
+                                </p>
+                              ))}
+                            </div>
+                          );
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="price"
+                        stroke="#0B1D40"
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4, fill: "#0B1D40", stroke: "#93CDC5", strokeWidth: 2 }}
+                      />
+                      {/* Buy/Sell markers */}
+                      {priceHistory.filter((d: any) => d.marker).map((d: any, i: number) => (
+                        <ReferenceDot
+                          key={`marker-${i}`}
+                          x={d.date}
+                          y={d.price}
+                          r={6}
+                          fill={d.marker === 'BUY' ? '#10b981' : d.marker === 'SELL' ? '#ef4444' : '#f59e0b'}
+                          stroke="#fff"
+                          strokeWidth={2}
+                          label={{
+                            value: d.marker === 'BUY' ? '▲' : d.marker === 'SELL' ? '▼' : '◆',
+                            position: d.marker === 'BUY' ? 'bottom' : 'top',
+                            fill: d.marker === 'BUY' ? '#10b981' : d.marker === 'SELL' ? '#ef4444' : '#f59e0b',
+                            fontSize: 14,
+                            fontWeight: 'bold'
+                          }}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+          )}
           
           {/* Transaction Lots (Active) */}
           {bond.status === "Active" && (
