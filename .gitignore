@@ -35,3 +35,6 @@ test-quickbooks/.env
 .next
 .next/
 .env
+
+# Junk files
+junkbox/

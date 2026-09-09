@@ -240,10 +240,22 @@ export async function updateMarketPricesFromSheet() {
     if (typeof rawSymbol === 'number') {
       return new Date((rawSymbol - 25569) * 86400 * 1000).getTime();
     }
-    if (typeof rawSymbol === 'string' && rawSymbol.includes('/')) {
-      const parts = rawSymbol.trim().split('/');
-      if (parts.length === 3) {
-        return new Date(Date.UTC(parseInt(parts[2]!), parseInt(parts[1]!) - 1, parseInt(parts[0]!))).getTime();
+    if (typeof rawSymbol === 'string') {
+      const trimmed = rawSymbol.trim();
+      if (trimmed.includes('/')) {
+        const parts = trimmed.split('/');
+        if (parts.length === 3) {
+          return new Date(Date.UTC(parseInt(parts[2]!), parseInt(parts[1]!) - 1, parseInt(parts[0]!))).getTime();
+        }
+      }
+      const match = trimmed.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+      if (match) {
+        const [, day, monthStr, year] = match;
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const m = months.findIndex(m => monthStr!.toUpperCase().startsWith(m));
+        if (m !== -1) {
+          return new Date(Date.UTC(parseInt(year!), m, parseInt(day!))).getTime();
+        }
       }
     }
     return null;
@@ -344,7 +356,7 @@ export async function updateMarketPricesFromSheet() {
             } else if (typeof rawSymbol === 'string' && (rawSymbol.includes('-') || rawSymbol.includes('NIGB'))) {
               // Match Bond by year
               const match = rawSymbol.match(/(20\d{2})/);
-              if (match) {
+              if (match && sheetName !== "TBills Runs") {
                 const year = match[1];
                 matchedInstruments = allInstruments.filter(i => 
                   i.symbol.toUpperCase() === `FGN ${year} BOND`
