@@ -266,3 +266,4 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 ---
 
 *FundManager was architected to handle complex financial workflows with an emphasis on accuracy, performance, and clear data lineage.*
+https://walter46@bitbucket.org/sankoredevelopers/fund-manager.git
