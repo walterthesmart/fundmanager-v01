@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import YahooFinance from 'yahoo-finance2'
-const yahooFinance = new (YahooFinance as any)();
+const yahooFinance = new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
 import { calculateCleanPrice } from "../src/lib/bond-math"
 
 export async function applyPricesAction(
@@ -221,9 +221,9 @@ export async function updateMarketPricesFromSheet() {
     const str = dbSymbol.replace(/NIGTB\s*/i, '').trim();
     const parts = str.split('/');
     if (parts.length === 3) {
-      const day = parseInt(parts[0]);
-      const monthStr = parts[1];
-      const year = parseInt(parts[2]);
+      const day = parseInt(parts[0]!);
+      const monthStr = parts[1]!;
+      const year = parseInt(parts[2]!);
       let month = parseInt(monthStr);
       if (isNaN(month)) {
         const m = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'].indexOf(monthStr.toUpperCase());
@@ -243,7 +243,7 @@ export async function updateMarketPricesFromSheet() {
     if (typeof rawSymbol === 'string' && rawSymbol.includes('/')) {
       const parts = rawSymbol.trim().split('/');
       if (parts.length === 3) {
-        return new Date(Date.UTC(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))).getTime();
+        return new Date(Date.UTC(parseInt(parts[2]!), parseInt(parts[1]!) - 1, parseInt(parts[0]!))).getTime();
       }
     }
     return null;
@@ -262,9 +262,9 @@ export async function updateMarketPricesFromSheet() {
     
     let updatedCount = 0;
 
-    // Process Sheet2 (Flat table)
-    if (workbook.SheetNames.includes("Sheet2")) {
-      const records = utils.sheet_to_json<any>(workbook.Sheets["Sheet2"]);
+    // Process FBNUK (Flat table)
+    if (workbook.SheetNames.includes("FBNUK")) {
+      const records = utils.sheet_to_json<any>(workbook.Sheets["FBNUK"]!);
       for (const row of records) {
         const sheetSymbol = row["Symbol"];
         if (!sheetSymbol) continue;
@@ -272,19 +272,41 @@ export async function updateMarketPricesFromSheet() {
         const bidPxStr = row["Bid Px"];
         const bidYieldStr = row["Bid Yield"] || row["Bid %"]; 
 
-        const bidPx = typeof bidPxStr === 'number' ? bidPxStr : parseFloat(bidPxStr);
+        let bidPx = typeof bidPxStr === 'number' ? bidPxStr : parseFloat(bidPxStr);
         const bidYield = typeof bidYieldStr === 'number' ? bidYieldStr : parseFloat(bidYieldStr);
 
-        if (isNaN(bidPx)) continue;
+        if (isNaN(bidPx) && isNaN(bidYield)) continue;
 
         const dbSymbol = SYMBOL_MAPPING[sheetSymbol] || sheetSymbol;
         const instrument = await prisma.instrument.findFirst({ where: { symbol: dbSymbol } });
         if (instrument) {
-          await prisma.instrument.update({
-            where: { id: instrument.id },
-            data: { market_price: bidPx, market_ytm: isNaN(bidYield) ? null : bidYield },
-          });
-          updatedCount++;
+          if (isNaN(bidPx) && !isNaN(bidYield) && instrument.symbol.toUpperCase().includes('FGN')) {
+            if (instrument.coupon_rate && instrument.maturity_date) {
+              const cleanPrice = calculateCleanPrice(
+                bidYield,
+                instrument.coupon_rate,
+                new Date(),
+                instrument.maturity_date,
+                instrument.coupon_freq || 2,
+                instrument.face_value || 100
+              );
+              if (!isNaN(cleanPrice) && cleanPrice > 0) {
+                bidPx = cleanPrice;
+              }
+            }
+          }
+
+          const updateData: any = {};
+          if (!isNaN(bidPx)) updateData.market_price = bidPx;
+          if (!isNaN(bidYield)) updateData.market_ytm = bidYield;
+
+          if (Object.keys(updateData).length > 0) {
+            await prisma.instrument.update({
+              where: { id: instrument.id },
+              data: updateData,
+            });
+            updatedCount++;
+          }
         }
       }
     }
@@ -294,10 +316,10 @@ export async function updateMarketPricesFromSheet() {
     
     for (const sheetName of pivotedSheets) {
       if (workbook.SheetNames.includes(sheetName)) {
-        const data = utils.sheet_to_json<any[]>(workbook.Sheets[sheetName], { header: 1 });
+        const data = utils.sheet_to_json<any[]>(workbook.Sheets[sheetName]!, { header: 1 });
         if (data.length >= 5) {
-          const symbolsRow = data[3];
-          const latestDataRow = data[data.length - 1];
+          const symbolsRow = data[3]!;
+          const latestDataRow = data[data.length - 1]!;
           
           const allInstruments = await prisma.instrument.findMany();
 
@@ -363,6 +385,7 @@ export async function updateMarketPricesFromSheet() {
       }
     }
 
+    revalidatePath('/products');
     return { success: true, updatedCount };
   } catch (err: any) {
     console.error("Error updating prices from sheet:", err);

@@ -86,7 +86,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
               nav: Number(h.new_price)
             }));
           } else {
-            data = generateHistoricalAUM(txns, secTxns, insts, initialCashBalance);
+            data = generateHistoricalAUM(txns, secTxns, insts, initialCashBalance, productAssetClass);
           }
           setChartData(data);
           setTransactions(txns);
@@ -151,9 +151,9 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
           marketPrice: pos.currentPrice,
           marketValue: pos.currentValue,
           totalReturn: pos.returnAmount,
-          realizedReturn: 0, // Simplified for now, or calculate if needed
+          realizedReturn: pos.realizedReturn,
           realizedCoupons: 0,
-          realizedCapitalGain: 0,
+          realizedCapitalGain: pos.realizedReturn,
           couponsReceived: 0,
           instrument,
           openLots: [],
@@ -186,7 +186,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
       const current = holdings.get(key) || { displayKey: rawSymbol, lots: [] as Lot[], realizedGain: 0, realizedCoupons: 0, isBond };
       
       let accruedAtPurchase = 0;
-      let dirtyPrice = Number(tx.price);
+      let dirtyPrice = Number(tx.price?.toString() || 0);
       const faceValue = instrument?.face_value || (isBond ? 100 : 1);
       
       if (instrument && instrument.coupon_rate && instrument.maturity_date) {
@@ -201,7 +201,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
       }
       
       const multiplier = current.isBond ? 100 : 1;
-      const trancheFaceValue = Number(tx.units) * multiplier;
+      const trancheFaceValue = Number(tx.units?.toString() || 0) * multiplier;
       const trancheUnits = trancheFaceValue / multiplier; // calculateTotalConsideration uses nominal units
       const trancheCost = calculateTotalConsideration(dirtyPrice, trancheUnits, faceValue);
       
@@ -366,7 +366,30 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                   }
                   marketValue = calculateTBillConsideration(marketPrice, openUnits);
                 } else {
-                  // Regular Bond Logic (Use Clean Price directly from database)
+                  // Regular Bond Logic
+                  let currentCleanPrice = marketPrice;
+                  
+                  // If we have a YTM but no direct clean price from the sheet (or if we prefer YTM derivation for Bloomberg pulled bonds)
+                  if (instrument.market_ytm != null && instrument.market_price === null) {
+                      const dirtyFromYtm = calculateDirtyPriceFromYTM(
+                        instrument.market_ytm,
+                        instrument.coupon_rate,
+                        new Date(),
+                        maturityDate,
+                        instrument.coupon_freq || 2,
+                        instrument.face_value || 100
+                      );
+                      const accruedForYtm = calculateAccruedInterest(
+                         instrument.face_value || 100,
+                         instrument.coupon_rate,
+                         maturityDate,
+                         instrument.coupon_freq || 2,
+                         new Date()
+                      );
+                      currentCleanPrice = dirtyFromYtm - accruedForYtm;
+                      marketPrice = currentCleanPrice; // Update the display marketPrice
+                  }
+
                   const accrued = calculateAccruedInterest(
                     instrument.face_value || 100,
                     instrument.coupon_rate,
@@ -374,16 +397,10 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                     instrument.coupon_freq || 2,
                     new Date()
                   );
-                  const dirtyPrice = marketPrice + accrued;
+                  const dirtyPrice = currentCleanPrice + accrued;
                   marketValue = calculateTotalConsideration(dirtyPrice, openUnits / (isBond ? 100 : 1), instrument.face_value || (isBond ? 100 : 1));
                   
-                  accruedCoupon = calculateAccruedInterest(
-                    instrument.face_value || 100,
-                    instrument.coupon_rate,
-                    maturityDate,
-                    instrument.coupon_freq || 2,
-                    new Date()
-                  ) * (openUnits / (isBond ? 100 : 1));
+                  accruedCoupon = accrued * (openUnits / (isBond ? 100 : 1));
                 }
             } else {
                 marketValue = 0; // If closed or matured, market value is technically 0
@@ -430,17 +447,23 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
 
   // Aggregate current holdings from all positions
   const productCashBalance = useMemo(() => {
+    // Only use manual cash balance for GIF(N)
+    if (productName && productName.includes('Guaranteed Income')) {
+      return initialCashBalance;
+    }
+
     if (productAssetClass === 'global_equity' || productAssetClass === 'local_equity') {
       const cashPos = allPositions.find(p => p.name === 'Cash' || p.name === 'GEF Cash');
       return (cashPos ? cashPos.value : 0) + initialCashBalance;
     }
+    
     return transactions.reduce((sum, tx) => {
-      const amt = Number(tx.amount) || 0;
+      const amt = Number(tx.amount?.toString() || 0) || 0;
       if (tx.direction === "inflow") return sum + amt;
       if (tx.direction === "outflow") return sum - amt;
       return sum;
     }, 0) + initialCashBalance;
-  }, [transactions, initialCashBalance, allPositions, productAssetClass]);
+  }, [initialCashBalance, allPositions, productAssetClass, productName, transactions]);
 
   const currentHoldings = useMemo(() => {
     return allPositions.filter(p => p.status === "Active" && p.name !== "Cash" && p.name !== "GEF Cash");
@@ -465,7 +488,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[820px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[1100px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{productName}</DialogTitle>
         </DialogHeader>
@@ -554,7 +577,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                         borderRadius: "0px",
                         fontSize: "13px",
                       }}
-                      formatter={(value: number) => [`${new Intl.NumberFormat("en-US", { style: "currency", currency: productCurrency }).format(value)}`, "AUM"]}
+                      formatter={(value: any) => [`${new Intl.NumberFormat("en-US", { style: "currency", currency: productCurrency }).format(value)}`, "AUM"]}
                     />
                     <Area
                       type="monotone"
@@ -606,6 +629,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                       <th className="py-2 px-3 font-medium text-right">Book Value</th>
                       <th className="py-2 px-3 font-medium text-right">Market Value</th>
                       <th className="py-2 px-3 font-medium text-right">MTM</th>
+                      <th className="py-2 px-3 font-medium text-right">Realized Return</th>
                       <th className="py-2 px-3 font-medium text-right">Active Return</th>
                       <th className="py-2 px-3 font-medium text-center">Actions</th>
                     </tr>
@@ -631,6 +655,11 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                           h.totalReturn > 0 ? "text-emerald-600" : h.totalReturn < 0 ? "text-red-600" : "text-muted-foreground"
                         }`}>
                           {h.totalReturn > 0 ? "+" : ""}{formatCurrency(h.totalReturn)}
+                        </td>
+                        <td className={`py-2 px-3 text-right font-mono text-xs font-medium ${
+                          h.realizedReturn > 0 ? "text-emerald-600" : h.realizedReturn < 0 ? "text-red-600" : "text-muted-foreground"
+                        }`}>
+                          {h.realizedReturn !== 0 ? (h.realizedReturn > 0 ? "+" : "") + formatCurrency(h.realizedReturn) : "—"}
                         </td>
                         <td className={`py-2 px-3 text-right font-mono text-xs font-medium ${
                           h.totalReturn > 0 ? "text-emerald-600" : h.totalReturn < 0 ? "text-red-600" : "text-muted-foreground"
@@ -673,10 +702,13 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                         <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
                           —
                         </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
+                          —
+                        </td>
                         <td className="py-2 px-3 text-center"></td>
                       </tr>
                     )}
-                    {(currentHoldings.length === 0 && productCashBalance === 0 && totalRealizedReturn !== 0) && (
+                    {totalRealizedReturn !== 0 && (
                       <tr className="border-b border-border/50 hover:bg-muted/50 text-muted-foreground">
                         <td className="py-2 px-3 font-medium text-xs flex items-center gap-2">
                           Realized Returns (Closed)
@@ -699,6 +731,9 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                         }`}>
                           {totalRealizedReturn > 0 ? "+" : ""}{formatCurrency(totalRealizedReturn)}
                         </td>
+                        <td className="py-2 px-3 text-right font-mono text-xs text-muted-foreground">
+                          —
+                        </td>
                         <td className="py-2 px-3 text-center"></td>
                       </tr>
                     )}
@@ -709,6 +744,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                       <td className="py-2 px-3"></td>
                       <td className="py-2 px-3 text-right font-mono">{formatCurrency(totalBookValue)}</td>
                       <td className="py-2 px-3 text-right font-mono text-primary">{formatCurrency(totalMarketValue)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-muted-foreground">—</td>
                       <td className="py-2 px-3 text-right font-mono text-muted-foreground">—</td>
                       <td className={`py-2 px-3 text-right font-mono ${
                           totalReturnPortfolio > 0 ? "text-emerald-600" : totalReturnPortfolio < 0 ? "text-red-600" : "text-muted-foreground"
@@ -721,7 +757,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                     <tr className="border-t border-border bg-emerald-50/50">
                       <td className="py-2 px-3 text-muted-foreground">Realized Returns (Closed)</td>
                       <td colSpan={2}></td>
-                      <td colSpan={3} className={`py-2 px-3 text-right font-mono font-medium ${
+                      <td colSpan={4} className={`py-2 px-3 text-right font-mono font-medium ${
                           totalRealizedReturn > 0 ? "text-emerald-600" : totalRealizedReturn < 0 ? "text-red-600" : "text-muted-foreground"
                       }`}>
                           {totalRealizedReturn > 0 ? "+" : ""}{formatCurrency(totalRealizedReturn)}
@@ -733,6 +769,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                       <td className="py-3 px-3"></td>
                       <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">{formatCurrency(totalBookValue + productCashBalance)}</td>
                       <td className="py-3 px-3 text-right font-mono text-sm text-primary">{formatCurrency(totalAUM)}</td>
+                      <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">—</td>
                       <td className="py-3 px-3 text-right font-mono text-sm text-muted-foreground">—</td>
                       <td className={`py-3 px-3 text-right font-mono text-sm ${
                           totalAUM > (totalBookValue + productCashBalance) ? "text-emerald-600" : totalAUM < (totalBookValue + productCashBalance) ? "text-red-600" : "text-muted-foreground"
@@ -795,7 +832,7 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                       </td>
                       <td className="py-2 px-3 text-xs text-right font-mono">
                         {tx.direction === "outflow" && "−"}
-                        ₦{Number(tx.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₦{Number(tx.amount?.toString() || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-3 text-xs text-muted-foreground truncate max-w-[200px]">
                         {tx.narration || "—"}
@@ -905,7 +942,14 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                         .sort((a, b) => new Date(b.value_date).getTime() - new Date(a.value_date).getTime())
                         .slice(0, 50)
                         .map((tx, i) => (
-                        <tr key={tx.id || i} className="border-b border-slate-100 last:border-none hover:bg-slate-50">
+                        <tr 
+                          key={tx.id || i} 
+                          className="border-b border-slate-100 last:border-none hover:bg-slate-50 cursor-pointer"
+                          onClick={() => {
+                            const holding = allPositions.find(p => p.name === tx.symbol);
+                            if (holding) setSelectedBond(holding);
+                          }}
+                        >
                           <td className="py-2 px-3 text-xs whitespace-nowrap">
                             {format(new Date(tx.value_date), "MMM d, yyyy")}
                           </td>
@@ -924,10 +968,10 @@ export function ProductChartModal({ productId, productName, productAssetClass, p
                             </span>
                           </td>
                           <td className="py-2 px-3 text-xs text-right font-mono text-slate-600">
-                            {Number(tx.units).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                            {Number(tx.units?.toString() || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                           </td>
                           <td className="py-2 px-3 text-xs text-right font-mono text-slate-600">
-                            ₦{Number(tx.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₦{Number(tx.price?.toString() || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                         </tr>
                       ))}
@@ -1315,16 +1359,16 @@ function BondDetailsSheet({
           <div className="bg-slate-50 border rounded-lg p-4 grid gap-3">
             <h3 className="text-sm font-semibold text-slate-800 uppercase border-b pb-2">Valuation Summary</h3>
             <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title="Total face value of all active purchase lots for this bond. This is the nominal amount the issuer will repay at maturity.">Total Face Value</span>
-              <span className="font-mono">{bond.units.toLocaleString()}</span>
+              <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title={bond.isEquity ? "Total number of shares currently held." : "Total face value of all active purchase lots for this bond. This is the nominal amount the issuer will repay at maturity."}>{bond.isEquity ? "Total Shares" : "Total Face Value"}</span>
+              <span className="font-mono">{bond.isEquity ? bond.units?.toLocaleString(undefined, { maximumFractionDigits: 4 }) : bond.units?.toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title="Sum of Total Considerations across all purchase tranches. This is the actual amount of cash paid to acquire the bond, including accrued interest paid to the seller at settlement.">Book Value (Cost)</span>
+              <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title="Sum of Total Considerations across all purchase tranches. This is the actual amount of cash paid to acquire the instrument.">Book Value (Cost)</span>
               <span className="font-mono">{formatCurrency(bond.value)}</span>
             </div>
             <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title="Current mark-to-market value using the clean price (excluding accrued interest). Clean Price × Face Value ÷ 100.">Market Value (Clean)</span>
-              <span className="font-mono font-medium">{formatCurrency(bond.marketValue - accruedCoupon)}</span>
+              <span className="text-slate-600 cursor-help border-b border-dotted border-slate-400" title={bond.isEquity ? "Current market value based on latest live price." : "Current mark-to-market value using the clean price (excluding accrued interest)."}>Market Value (Clean)</span>
+              <span className="font-mono font-medium">{formatCurrency(bond.isEquity ? bond.marketValue : (bond.marketValue - accruedCoupon))}</span>
             </div>
             
             {bond.realizedReturn !== 0 && (
@@ -1350,7 +1394,21 @@ function BondDetailsSheet({
               </>
             )}
             
-            {hasDetails ? (
+            {bond.isEquity ? (
+              <>
+                <div className="flex justify-between items-center text-sm font-medium border-t pt-2">
+                  <span className="text-slate-800 cursor-help border-b border-dotted border-slate-700" title="Total Return = Market Value - Book Value.">Active Return (MTM)</span>
+                  <div className="text-right">
+                    <span className={`block font-mono ${bond.totalReturn >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                      {bond.totalReturn >= 0 ? "+" : ""}{formatCurrency(bond.totalReturn)}
+                    </span>
+                    <span className={`block text-xs font-mono ${bond.totalReturn >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                      {bond.totalReturn >= 0 ? "+" : ""}{(bond.value > 0 ? (bond.totalReturn / bond.value) * 100 : 0).toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : hasDetails ? (
               <>
                 {!isTBill && (
                   <>
@@ -1439,7 +1497,7 @@ function BondDetailsSheet({
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {lots.map(lot => (
+                      {lots.map((lot: any) => (
                         <tr key={lot.id}>
                           <td className="py-2 px-3">{lot.date.toLocaleDateString()}</td>
                           <td className="py-2 px-3 font-mono text-right">{lot.units.toLocaleString()}</td>
@@ -1507,8 +1565,8 @@ function BondDetailsSheet({
                             {tx.direction}
                           </span>
                         </td>
-                        <td className="py-2 px-3 font-mono text-right">{(Number(tx.units) * (bond.isBond ? 100 : 1)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td className="py-2 px-3 font-mono text-right">{Number(tx.price).toFixed(4)}</td>
+                        <td className="py-2 px-3 font-mono text-right">{(Number(tx.units?.toString() || 0) * (bond.isBond ? 100 : 1)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="py-2 px-3 font-mono text-right">{Number(tx.price?.toString() || 0).toFixed(4)}</td>
                       </tr>
                     ))}
                 </tbody>

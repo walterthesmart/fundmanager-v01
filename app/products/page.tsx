@@ -33,7 +33,7 @@ export default async function ProductsPage() {
     if (product.asset_class === 'global_equity' || product.asset_class === 'local_equity') {
       const livePrices: Record<string, any> = {};
       instruments.forEach(i => {
-        livePrices[i.symbol] = { price: i.market_price || 0 };
+        livePrices[i.symbol] = { price: Number(i.market_price?.toString() || 0) };
       });
       
       const allTxs: EquityTransaction[] = [];
@@ -43,9 +43,9 @@ export default async function ProductsPage() {
           symbol: "Cash",
           type: tx.direction === "inflow" ? "TXIN" : "TXOUT",
           shares: 1,
-          price: tx.amount,
+          price: Number(tx.amount),
           fees: 0,
-          amount: tx.amount
+          amount: Number(tx.amount)
         });
       });
       product.security_transactions.forEach(tx => {
@@ -53,20 +53,24 @@ export default async function ProductsPage() {
           date: tx.value_date.toISOString(),
           symbol: tx.symbol || "",
           type: tx.direction as any,
-          shares: tx.units,
-          price: tx.price,
+          shares: Number(tx.units?.toString() || 0),
+          price: Number(tx.price?.toString() || 0),
           fees: 0,
-          amount: tx.units * tx.price
+          amount: Number(tx.units?.toString() || 0) * Number(tx.price?.toString() || 0)
         });
       });
       
       const positions = calculatePositions(allTxs, livePrices);
-      aum = positions.reduce((sum, pos) => sum + pos.currentValue, 0) + ((product as any).cash_balance || 0);
+      const eqValue = positions.reduce((sum, pos) => sum + pos.currentValue, 0);
+      const cash = Number((product as any).cash_balance?.toString() || 0);
+      aum = eqValue + cash;
+      console.log(`[DEBUG] Product: ${product.ticker}, eqValue: ${eqValue}, cash: ${cash}, aum: ${aum}, original price: ${product.price}`);
     } else {
       let cash = 0;
       product.cash_transactions.forEach(tx => {
-        if (tx.direction === "inflow") cash += tx.amount;
-        else if (tx.direction === "outflow") cash -= tx.amount;
+        const amt = Number(tx.amount?.toString() || 0);
+        if (tx.direction === "inflow") cash += amt;
+        else if (tx.direction === "outflow") cash -= amt;
       });
       
       let bondValue = 0;

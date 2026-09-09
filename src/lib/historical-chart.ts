@@ -1,10 +1,13 @@
 import { calculateTotalConsideration, calculateCouponsReceived, isZeroCoupon } from './bond-math';
 
+import { calculatePositions, EquityTransaction } from './equity-math';
+
 export function generateHistoricalAUM(
   cashTxns: any[],
   secTxns: any[],
   instruments: any[],
-  baseCash: number = 0
+  baseCash: number = 0,
+  assetClass: string = 'bond'
 ): { date: string; nav: number }[] {
   // We collect all unique dates from transactions to form the timeline
   const events: { date: Date; type: "CASH" | "SECURITY"; tx: any }[] = [];
@@ -21,6 +24,58 @@ export function generateHistoricalAUM(
 
   if (events.length === 0) return [];
 
+  // Date formatting cache
+  const formatDate = (d: Date) => {
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+  };
+
+  if (assetClass === 'global_equity' || assetClass === 'local_equity') {
+    const livePrices: Record<string, any> = {};
+    instruments.forEach(i => {
+      livePrices[i.symbol] = { price: Number(i.market_price?.toString() || 0) };
+    });
+
+    const allTxs: EquityTransaction[] = [];
+    cashTxns.forEach(tx => {
+      allTxs.push({
+        date: new Date(tx.value_date).toISOString(),
+        symbol: "Cash",
+        type: tx.direction === "inflow" ? "TXIN" : "TXOUT",
+        shares: 1,
+        price: Number(tx.amount?.toString() || 0),
+        fees: 0,
+        amount: Number(tx.amount?.toString() || 0)
+      });
+    });
+
+    secTxns.forEach(tx => {
+      allTxs.push({
+        date: new Date(tx.value_date).toISOString(),
+        symbol: tx.symbol || "",
+        type: tx.direction,
+        shares: Number(tx.units?.toString() || 0),
+        price: Number(tx.price?.toString() || 0),
+        fees: 0,
+        amount: Number(tx.units?.toString() || 0) * Number(tx.price?.toString() || 0)
+      });
+    });
+
+    const chartData: { date: string; nav: number }[] = [];
+    events.forEach((event, index) => {
+      const nextEvent = events[index + 1];
+      if (!nextEvent || nextEvent.date.getTime() !== event.date.getTime()) {
+        const positions = calculatePositions(allTxs, livePrices, event.date.toISOString());
+        const nav = positions.reduce((sum, pos) => sum + pos.currentValue, 0) + baseCash;
+        chartData.push({
+          date: formatDate(event.date),
+          nav
+        });
+      }
+    });
+
+    return chartData;
+  }
+
   const chartData: { date: string; nav: number }[] = [];
   let netContributions = 0;
   
@@ -28,14 +83,11 @@ export function generateHistoricalAUM(
   const activeLots = new Map<string, any[]>();
   let totalRealizedGain = 0;
   
-  // Date formatting cache
-  const formatDate = (d: Date) => {
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-  };
+
 
   events.forEach((event, index) => {
     if (event.type === "CASH") {
-      netContributions += (event.tx.direction === "inflow" ? Number(event.tx.amount) : -Number(event.tx.amount));
+      netContributions += (event.tx.direction === "inflow" ? Number(event.tx.amount?.toString() || 0) : -Number(event.tx.amount?.toString() || 0));
     } else {
       // Security Transaction
       const tx = event.tx;
@@ -50,10 +102,10 @@ export function generateHistoricalAUM(
       // but to be mathematically consistent with the main engine, we should.
       // Wait, if we use the exact same FIFO logic, we can track exact realized gain!
       
-      let dirtyPrice = Number(tx.price);
+      let dirtyPrice = Number(tx.price?.toString() || 0);
       // NOTE: We don't need exact Accrued at Purchase here for the historical chart if we just track proceeds vs cost.
       // But let's keep it simple: Total Cost = tx.units * tx.price ? No, calculateTotalConsideration.
-      const trancheFaceValue = Number(tx.units) * 100;
+      const trancheFaceValue = Number(tx.units?.toString() || 0) * 100;
       const trancheUnits = trancheFaceValue / 100;
       const trancheCost = calculateTotalConsideration(dirtyPrice, trancheUnits, faceValue);
       

@@ -29,7 +29,7 @@ export const getHistoricalPrice = (livePrices: Record<string, { price: number; h
   if (!data || data.length === 0) return null;
   
   const targetTime = new Date(targetDateStr).getTime();
-  let closestPrice = data[0].close;
+  let closestPrice = data[0]!.close;
   let minDiff = Infinity;
   
   for (const h of data) {
@@ -72,19 +72,12 @@ export function calculatePositions(
       return;
     }
 
-    if (tx.type === 'TXIN') {
-      cashBalance += tx.shares * tx.price;
-      return;
-    } else if (tx.type === 'TXOUT') {
-      cashBalance -= tx.shares * tx.price;
-      return;
-    }
-
     if (!positionsMap[tx.symbol]) {
       positionsMap[tx.symbol] = { shares: 0, totalCost: 0, realizedReturn: 0, assetClass: 'Stock' };
     }
 
     const pos = positionsMap[tx.symbol]!;
+    (pos as any).lastTradedPrice = tx.price;
     
     // We assume tx.shares is positive in the dataset for both BUY and SELL.
     const isBuy = tx.type === 'BUY';
@@ -160,7 +153,7 @@ export function calculatePositions(
     const pos = positionsMap[symbol]!;
     if (Math.abs(pos.shares) <= 0.000001) return; // Filter out closed positions
 
-    const currentPrice = livePrices[symbol]?.price || 0;
+    const currentPrice = livePrices[symbol]?.price || (pos as any).lastTradedPrice || 0;
     const averagePrice = pos.shares !== 0 ? Math.abs(pos.totalCost / pos.shares) : 0;
     const currentValue = pos.shares * currentPrice;
     const returnAmount = currentValue - pos.totalCost;
